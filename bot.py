@@ -2,6 +2,7 @@ import tweepy
 import telebot
 from telebot import types
 from datetime import datetime
+import os
 
 API_KEY = "768jbgLEYitCHJJpgbXyt5HFu"
 API_SECRET = "KUHTW9hR5eZNyduB5kNKyUpfYSrL3H3Vt004wWaZll2OXmpYf3"
@@ -12,7 +13,12 @@ CHANNEL = "@menfessangel"
 CHANNEL_LINK = "https://t.me/menfessangel"
 
 print("CONNECT KE X...")
+# Client v2 buat tweet
 client_x = tweepy.Client(consumer_key=API_KEY, consumer_secret=API_SECRET, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_SECRET)
+# API v1 buat upload media
+auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET)
+api_v1 = tweepy.API(auth)
+
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 user_quota = {}
 
@@ -24,7 +30,7 @@ def get_quota(uid):
 
 @bot.message_handler(content_types=['text', 'photo', 'video'])
 def all_handler(message):
-    print(f"PESAN MASUK: {message.from_user.id}")
+    print(f"PESAN MASUK: {message.from_user.id} type={message.content_type}")
     if message.text and message.text.startswith('/start'):
         name = message.from_user.first_name or "kamu"
         uname = f"@{message.from_user.username}" if message.from_user.username else "tidak ada username"
@@ -52,24 +58,58 @@ def all_handler(message):
         q['text'] += 1
         base_text = message.text or " "
 
-    # === AUTO TAMBAH #jogjalend DI AKHIR ===
     if "#jogjalend" not in base_text.lower():
         text = f"{base_text}\n\n#jogjalend"
     else:
         text = base_text
-    # === END AUTO HASHTAG ===
+
+    # === UPLOAD MEDIA KE X ===
+    media_ids = []
+    tmp_path = None
+    try:
+        if is_media:
+            if message.content_type == 'photo':
+                file_id = message.photo[-1].file_id
+            else:
+                file_id = message.video.file_id
+            
+            file_info = bot.get_file(file_id)
+            downloaded = bot.download_file(file_info.file_path)
+            tmp_path = f"/tmp/{file_id}.jpg" if message.content_type == 'photo' else f"/tmp/{file_id}.mp4"
+            with open(tmp_path, 'wb') as f:
+                f.write(downloaded)
+            
+            print(f"-> UPLOAD MEDIA KE X: {tmp_path}")
+            media = api_v1.media_upload(tmp_path)
+            media_ids = [media.media_id]
+    except Exception as e:
+        print(f"-> GAGAL UPLOAD MEDIA X: {e}")
 
     try:
-        tweet = client_x.create_tweet(text=text)
+        if media_ids:
+            tweet = client_x.create_tweet(text=text, media_ids=media_ids)
+        else:
+            tweet = client_x.create_tweet(text=text)
         tweet_id = tweet.data['id']
-        print(f"-> SUKSES X: {tweet_id} | TEXT: {text[:30]}...")
+        print(f"-> SUKSES X: {tweet_id}")
     except Exception as e:
         print(f"-> GAGAL X: {e}")
         bot.reply_to(message, f"❌ Gagal ke X: {e}")
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
         return
 
+    if tmp_path and os.path.exists(tmp_path):
+        os.remove(tmp_path)
+
+    # === KIRIM KE CHANNEL TELEGRAM (PAKE FOTO/VIDEO) ===
     try:
-        sent = bot.send_message(CHANNEL, text)
+        if message.content_type == 'photo':
+            sent = bot.send_photo(CHANNEL, message.photo[-1].file_id, caption=text)
+        elif message.content_type == 'video':
+            sent = bot.send_video(CHANNEL, message.video.file_id, caption=text)
+        else:
+            sent = bot.send_message(CHANNEL, text)
         channel_url = f"{CHANNEL_LINK}/{sent.message_id}"
         ch_msg_id = sent.message_id
     except Exception as e:
@@ -108,5 +148,5 @@ print("MENGHAPUS WEBHOOK...")
 bot.remove_webhook()
 bot.delete_webhook(drop_pending_updates=True)
 print("WEBHOOK BERSIH!")
-print("BOT JALAN BOS! /start READY! AUTO #jogjalend ON!")
+print("BOT JALAN BOS! /start READY! AUTO #jogjalend ON! FOTO ON!")
 bot.infinity_polling(none_stop=True, timeout=60, long_polling_timeout=60)
