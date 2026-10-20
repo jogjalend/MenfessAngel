@@ -131,7 +131,7 @@ def all_callback(call):
         if call.data == "profil":
             bot.send_message(call.message.chat.id, f"👤 Profil\nNama: {call.from_user.first_name}\nUsername: @{call.from_user.username}\nID: {call.from_user.id}")
         else:
-            bot.send_message(call.message.chat.id, "📋 Bot Menfess Angel\nFree Daily Quota: Text 50, Media 10\npertanyaan & aduan: @Jogja_Lend")
+            bot.send_message(call.message.chat.id, "📋 Bot Menfess Angel\nFree Daily Quota: Text 5, Media 3\npertanyaan & aduan: @Jogja_Lend")
         bot.answer_callback_query(call.id)
     elif call.data.startswith('del_'):
         try:
