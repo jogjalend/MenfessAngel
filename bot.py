@@ -46,14 +46,14 @@ def all_handler(message):
     is_media = message.content_type in ['photo', 'video']
     
     if is_media:
-        if q['media'] >= 10:
-            bot.reply_to(message, "❌ Kuota Media habis (10/10)")
+        if q['media'] >= 3:
+            bot.reply_to(message, "❌ Kuota Media habis (3/3)")
             return
         q['media'] += 1
         base_text = message.caption if message.caption else " "
     else:
-        if q['text'] >= 50:
-            bot.reply_to(message, "❌ Kuota Text habis (50/50)")
+        if q['text'] >= 5:
+            bot.reply_to(message, "❌ Kuota Text habis (5/5)")
             return
         q['text'] += 1
         base_text = message.text or " "
@@ -117,7 +117,7 @@ def all_handler(message):
         channel_url = CHANNEL_LINK
         ch_msg_id = 0
 
-    reply_text = f"Free Daily Quota\nText: {q['text']}/50\nMedia: {q['media']}/10\n\nBerhasil mengirim menfess\n\npertanyaan & aduan:\n@Jogja_Lend"
+    reply_text = f"Free Daily Quota\nText: {q['text']}/5\nMedia: {q['media']}/3\n\nBerhasil mengirim menfess\n\npertanyaan & aduan:\n@Jogja_Lend"
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(types.InlineKeyboardButton("➡️ See Message", url=channel_url))
     markup.add(types.InlineKeyboardButton("🗑️ Delete Post", callback_data=f"del_{tweet_id}_{ch_msg_id}"))
@@ -148,5 +148,5 @@ print("MENGHAPUS WEBHOOK...")
 bot.remove_webhook()
 bot.delete_webhook(drop_pending_updates=True)
 print("WEBHOOK BERSIH!")
-print("BOT JALAN BOS! /start READY! AUTO #jogjalend ON! FOTO ON!")
+print("BOT JALAN SAYANG😚 /start READY! AUTO #jogjalend ON! FOTO ON!")
 bot.infinity_polling(none_stop=True, timeout=60, long_polling_timeout=60)
