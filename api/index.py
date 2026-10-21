@@ -6,10 +6,11 @@ import tweepy
 app = Flask(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-X_API_KEY = os.getenv("X_API_KEY")
-X_API_SECRET = os.getenv("X_API_SECRET")
-X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN")
-X_ACCESS_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET")
+# SUPPORT 2 NAMA ENV BIAR GAK ERROR LAGI
+X_API_KEY = os.getenv("X_API_KEY") or os.getenv("API_KEY")
+X_API_SECRET = os.getenv("X_API_SECRET") or os.getenv("API_SECRET")
+X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN") or os.getenv("ACCESS_TOKEN")
+X_ACCESS_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET") or os.getenv("ACCESS_SECRET") or os.getenv("X_ACCESS_SECRET")
 CHANNEL_ID = os.getenv("CHANNEL_ID") or "-100392893142"
 CHANNEL_USERNAME = "menfessangel"
 
@@ -30,12 +31,11 @@ def add_watermark(b):
         print(e)
     return b
 
-# FIX: JANGAN PAKE defaults={'path':''} LAGI, INI YANG BIKIN CRASH
 @app.route("/")
 @app.route("/<path:path>", methods=['GET','POST'])
 def handler(path=None):
     if request.method == 'GET':
-        return "Bot Aktif - FIX Mapping - Kiri Atas", 200
+        return "Bot Aktif - ENV FIX - Kiri Atas", 200
     try:
         data = request.get_json()
         if not data or "message" not in data:
@@ -43,7 +43,7 @@ def handler(path=None):
         msg = data["message"]
         chat_id = msg["chat"]["id"]
         if "text" in msg and msg["text"].startswith("/start"):
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"aktif bos - mapping fix"})
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"aktif bos - env fix"})
             return "ok",200
         caption = msg.get("caption") or msg.get("text") or ""
         requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"⏳ Proses: {caption[:20]}"})
