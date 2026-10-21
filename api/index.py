@@ -9,7 +9,9 @@ X_API_KEY = os.getenv("X_API_KEY") or os.getenv("API_KEY")
 X_API_SECRET = os.getenv("X_API_SECRET") or os.getenv("API_SECRET")
 X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN") or os.getenv("ACCESS_TOKEN")
 X_ACCESS_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET") or os.getenv("ACCESS_SECRET")
-CHANNEL_ID = os.getenv("CHANNEL_ID") or "@jogja_lend"
+CHANNEL_ID =
+os.getenv("CHANNEL_ID") or "-100392893142"
+CHANNEL_USERNAME = "menfessangel"
 
 START_TEXT = """halo @{username} ✨
 
