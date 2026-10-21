@@ -10,11 +10,11 @@ except:
     PIL_AVAILABLE = False
     Image = None
 
-API_KEY = os.getenv("768jbgLEYitCHJJpgbXyt5HFu")
-API_SECRET = os.getenv("KUHTW9hR5eZNyduB5kNKyUpfYSrL3H3Vt004wWaZll2OXmpYf3")
-ACCESS_TOKEN = os.getenv("2067954595218030592-unSaId3AulEGwb8nWLBUQsGeH0hwsY")
-ACCESS_SECRET = os.getenv("Tc5FYm5C5k8ES6cgNs6v7VFVlpTu2vGW79vd72yo1ezsC")
-TELEGRAM_TOKEN = os.getenv("8716061655:AAFHu13ziFLn3t528EeR5CQ45meda1K2zpk")
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
+ACCESS_SECRET = os.getenv("ACCESS_SECRET")
+TELEGRAM_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL = "@menfessangel"
 CHANNEL_LINK = "https://t.me/menfessangel"
 
