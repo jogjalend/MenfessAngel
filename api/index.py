@@ -1,95 +1,86 @@
-import os, requests, io
+import os
+import requests
+import io
+from flask import Flask, request
 from PIL import Image
 import tweepy
 
+app = Flask(__name__)
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 X_API_KEY = os.getenv("X_API_KEY") or os.getenv("API_KEY")
 X_API_SECRET = os.getenv("X_API_SECRET") or os.getenv("API_SECRET")
 X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN") or os.getenv("ACCESS_TOKEN")
 X_ACCESS_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET") or os.getenv("ACCESS_SECRET")
 
-def add_watermark(base_image_bytes):
-    base = Image.open(io.BytesIO(base_image_bytes)).convert("RGBA")
-    # cari logo.png
-    logo_path = "logo.png"
-    if not os.path.exists(logo_path):
-        logo_path = "api/logo.png"
-    if not os.path.exists(logo_path):
-        return base_image_bytes # kalau gak ada logo, post polosan
-    
-    logo = Image.open(logo_path).convert("RGBA")
-    # resize logo 15% dari lebar foto
-    w, h = base.size
-    logo_size = int(w * 0.15)
-    logo.thumbnail((logo_size, logo_size))
-    
-    # taruh pojok kanan bawah dengan margin 20px
-    x = w - logo.width - 20
-    y = h - logo.height - 20
-    
-    base.paste(logo, (x, y), logo)
-    
-    out = io.BytesIO()
-    base.convert("RGB").save(out, format="JPEG", quality=95)
-    out.seek(0)
-    return out.getvalue()
-
-def handler(request):
+def add_watermark(base_bytes):
     try:
-        data = request.get_json() if hasattr(request, 'get_json') else request.json
+        base = Image.open(io.BytesIO(base_bytes)).convert("RGBA")
+        logo_path = None
+        for p in ["logo.png", "api/logo.png", "MenfessAngel/logo.png"]:
+            if os.path.exists(p):
+                logo_path = p
+                break
+        if not logo_path:
+            return base_bytes
+        logo = Image.open(logo_path).convert("RGBA")
+        w, h = base.size
+        logo.thumbnail((int(w*0.16), int(w*0.16)))
+        base.paste(logo, (w - logo.width - 15, h - logo.height - 15), logo)
+        out = io.BytesIO()
+        base.convert("RGB").save(out, format="JPEG", quality=92)
+        return out.getvalue()
+    except:
+        return base_bytes
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>', methods=['GET', 'POST'])
+def main(path):
+    if request.method == 'GET':
+        return "Bot Menfess Angel Aktif Bos!", 200
+
+    try:
+        data = request.get_json()
         if not data or "message" not in data:
-            return {"statusCode": 200}
-        
+            return "ok", 200
+
         msg = data["message"]
         chat_id = msg["chat"]["id"]
-        
+
         if "photo" not in msg:
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                json={"chat_id": chat_id, "text": "Kirim FOTO + caption bos! Contoh: kirim foto terus tulis caption 'spill jogja'"})
-            return {"statusCode": 200}
-        
-        caption = msg.get("caption", "") or "menfess"
-        photo = msg["photo"][-1] # ambil resolusi terbesar
-        file_id = photo["file_id"]
-        
-        # get file path telegram
+                json={"chat_id": chat_id, "text": "Kirim FOTO + caption bos! 📸"})
+            return "ok", 200
+
+        caption = msg.get("caption", "menfess") or "menfess"
+        file_id = msg["photo"][-1]["file_id"]
+
         r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}").json()
         file_path = r["result"]["file_path"]
         file_bytes = requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}").content
-        
-        # watermark
-        watermarked = add_watermark(file_bytes)
-        
-        # post ke X
+
+        wm = add_watermark(file_bytes)
+
         auth = tweepy.OAuth1UserHandler(X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET)
         api = tweepy.API(auth)
         client = tweepy.Client(consumer_key=X_API_KEY, consumer_secret=X_API_SECRET,
                                 access_token=X_ACCESS_TOKEN, access_token_secret=X_ACCESS_SECRET)
-        
-        # upload media dulu
-        # save temp
+
         with open("/tmp/post.jpg", "wb") as f:
-            f.write(watermarked)
-        
+            f.write(wm)
+
         media = api.media_upload("/tmp/post.jpg")
         client.create_tweet(text=caption, media_ids=[media.media_id])
-        
-        # bales di telegram
+
         requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={"chat_id": chat_id, "text": f"✅ BERHASIL POST KE X @jogjalend!\n\nCaption: {caption}"})
-            
+            json={"chat_id": chat_id, "text": f"✅ BERHASIL POST KE X!\n\n{caption}"})
+
     except Exception as e:
         print(f"ERROR: {e}")
         try:
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                 json={"chat_id": chat_id, "text": f"❌ Gagal: {e}"})
-        except: pass
-    
-    return {"statusCode": 200}
+        except:
+            pass
 
-# buat Vercel python
-def app(environ, start_response):
-    from werkzeug.wrappers import Request, Response
-    request = Request(environ)
-    result = handler(request)
-    response = Response(status=result["statusCode"])
-    return response(environ, start_response)
+    return "ok", 200
