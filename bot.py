@@ -3,24 +3,42 @@ import telebot
 from telebot import types
 from datetime import datetime
 import os
+import io
+from PIL import Image
 
-API_KEY = "768jbgLEYitCHJJpgbXyt5HFu"
-API_SECRET = "KUHTW9hR5eZNyduB5kNKyUpfYSrL3H3Vt004wWaZll2OXmpYf3"
-ACCESS_TOKEN = "2067954595218030592-unSaId3AulEGwb8nWLBUQsGeH0hwsY"
-ACCESS_SECRET = "Tc5FYm5C5k8ES6cgNs6v7VFVlpTu2vGW79vd72yo1ezsC"
-TELEGRAM_TOKEN = "8716061655:AAFHu13ziFLn3t528EeR5CQ45meda1K2zpk"
+# === TOKEN AMAN DARI ENV ===
+API_KEY = os.getenv("768jbgLEYitCHJJpgbXyt5HFu")
+API_SECRET = os.getenv("KUHTW9hR5eZNyduB5kNKyUpfYSrL3H3Vt004wWaZll2OXmpYf3")
+ACCESS_TOKEN = os.getenv("2067954595218030592-unSaId3AulEGwb8nWLBUQsGeH0hwsY")
+ACCESS_SECRET = os.getenv("Tc5FYm5C5k8ES6cgNs6v7VFVlpTu2vGW79vd72yo1ezsC")
+TELEGRAM_TOKEN = os.getenv("8716061655:AAFHu13ziFLn3t528EeR5CQ45meda1K2zpk")
 CHANNEL = "@menfessangel"
 CHANNEL_LINK = "https://t.me/menfessangel"
 
 print("CONNECT KE X...")
-# Client v2 buat tweet
 client_x = tweepy.Client(consumer_key=API_KEY, consumer_secret=API_SECRET, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_SECRET)
-# API v1 buat upload media
 auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET)
 api_v1 = tweepy.API(auth)
-
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 user_quota = {}
+
+# === WATERMARK LEND ANGEL KIRI ATAS ===
+def kasih_watermark(file_bytes):
+    try:
+        base = Image.open(io.BytesIO(file_bytes)).convert("RGBA")
+        W, H = base.size
+        logo = Image.open("logo.png").convert("RGBA")
+        logo_w = int(W * 0.18)
+        logo_h = int(logo.size[1] * logo_w / logo.size[0])
+        logo = logo.resize((logo_w, logo_h), Image.LANCZOS)
+        base.paste(logo, (25, 25), logo)
+        out = io.BytesIO()
+        base.convert("RGB").save(out, format="JPEG", quality=92)
+        out.seek(0)
+        return out.getvalue()
+    except Exception as e:
+        print(f"Watermark error: {e}")
+        return file_bytes
 
 def get_quota(uid):
     today = datetime.now().strftime("%Y-%m-%d")
@@ -30,7 +48,6 @@ def get_quota(uid):
 
 @bot.message_handler(content_types=['text', 'photo', 'video'])
 def all_handler(message):
-    print(f"PESAN MASUK: {message.from_user.id} type={message.content_type}")
     if message.text and message.text.startswith('/start'):
         name = message.from_user.first_name or "kamu"
         uname = f"@{message.from_user.username}" if message.from_user.username else "tidak ada username"
@@ -39,7 +56,6 @@ def all_handler(message):
         kb.add(types.InlineKeyboardButton("👤 Profil", callback_data="profil"))
         kb.add(types.InlineKeyboardButton("📋 Informasi Bot", callback_data="info"))
         bot.send_message(message.chat.id, txt, reply_markup=kb)
-        print("-> /start TERKIRIM")
         return
 
     q = get_quota(message.from_user.id)
@@ -58,32 +74,23 @@ def all_handler(message):
         q['text'] += 1
         base_text = message.text or " "
 
-    if "#jogjalend" not in base_text.lower():
-        text = f"{base_text}\n\n#jogjalend"
-    else:
-        text = base_text
+    text = base_text if "#jogjalend" in base_text.lower() else f"{base_text}\n\n#jogjalend"
 
-    # === UPLOAD MEDIA KE X ===
     media_ids = []
     tmp_path = None
+    downloaded_bytes = None
     try:
         if is_media:
-            if message.content_type == 'photo':
-                file_id = message.photo[-1].file_id
-            else:
-                file_id = message.video.file_id
-            
+            file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.video.file_id
             file_info = bot.get_file(file_id)
-            downloaded = bot.download_file(file_info.file_path)
+            downloaded_bytes = bot.download_file(file_info.file_path)
             tmp_path = f"/tmp/{file_id}.jpg" if message.content_type == 'photo' else f"/tmp/{file_id}.mp4"
             with open(tmp_path, 'wb') as f:
-                f.write(downloaded)
-            
-            print(f"-> UPLOAD MEDIA KE X: {tmp_path}")
+                f.write(downloaded_bytes)
             media = api_v1.media_upload(tmp_path)
             media_ids = [media.media_id]
     except Exception as e:
-        print(f"-> GAGAL UPLOAD MEDIA X: {e}")
+        print(f"GAGAL MEDIA X: {e}")
 
     try:
         if media_ids:
@@ -91,9 +98,7 @@ def all_handler(message):
         else:
             tweet = client_x.create_tweet(text=text)
         tweet_id = tweet.data['id']
-        print(f"-> SUKSES X: {tweet_id}")
     except Exception as e:
-        print(f"-> GAGAL X: {e}")
         bot.reply_to(message, f"❌ Gagal ke X: {e}")
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
@@ -102,10 +107,10 @@ def all_handler(message):
     if tmp_path and os.path.exists(tmp_path):
         os.remove(tmp_path)
 
-    # === KIRIM KE CHANNEL TELEGRAM (PAKE FOTO/VIDEO) ===
     try:
         if message.content_type == 'photo':
-            sent = bot.send_photo(CHANNEL, message.photo[-1].file_id, caption=text)
+            wm_bytes = kasih_watermark(downloaded_bytes)
+            sent = bot.send_photo(CHANNEL, wm_bytes, caption=text)
         elif message.content_type == 'video':
             sent = bot.send_video(CHANNEL, message.video.file_id, caption=text)
         else:
@@ -113,20 +118,19 @@ def all_handler(message):
         channel_url = f"{CHANNEL_LINK}/{sent.message_id}"
         ch_msg_id = sent.message_id
     except Exception as e:
-        print(f"-> GAGAL Channel: {e}")
+        print(f"GAGAL Channel: {e}")
         channel_url = CHANNEL_LINK
         ch_msg_id = 0
 
-    reply_text = f"Free Daily Quota\nText: {q['text']}/5\nMedia: {q['media']}/3\n\nBerhasil mengirim menfess\n\npertanyaan & aduan:\n@Jogja_Lend"
+    # === BALASAN BARU + TOMBOL TETEP ADA ===
+    reply_text = f"👸Menfess terkirim!\n\nSisa kuota hari ini:\n📝 Text : {q['text']}/5\n📸 Media : {q['media']}/3\n\nMenfes terkirim ke :\n@menfessangel\nx.com/jogjalendpm"
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(types.InlineKeyboardButton("➡️ See Message", url=channel_url))
     markup.add(types.InlineKeyboardButton("🗑️ Delete Post", callback_data=f"del_{tweet_id}_{ch_msg_id}"))
     bot.reply_to(message, reply_text, reply_markup=markup)
-    print("-> DONE POST TERKIRIM")
 
 @bot.callback_query_handler(func=lambda call: True)
 def all_callback(call):
-    print(f"CALLBACK: {call.data}")
     if call.data in ["profil", "info"]:
         if call.data == "profil":
             bot.send_message(call.message.chat.id, f"👤 Profil\nNama: {call.from_user.first_name}\nUsername: @{call.from_user.username}\nID: {call.from_user.id}")
@@ -147,6 +151,5 @@ def all_callback(call):
 print("MENGHAPUS WEBHOOK...")
 bot.remove_webhook()
 bot.delete_webhook(drop_pending_updates=True)
-print("WEBHOOK BERSIH!")
-print("BOT JALAN SAYANG😚 /start READY! AUTO #jogjalend ON! FOTO ON!")
+print("BOT JALAN FINAL! WATERMARK + BALASAN BARU + TOMBOL ON!")
 bot.infinity_polling(none_stop=True, timeout=60, long_polling_timeout=60)
