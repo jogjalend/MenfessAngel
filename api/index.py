@@ -1,8 +1,10 @@
-import os, io, requests
+import os, io, requests, traceback
 from flask import Flask, request
 from PIL import Image
 import tweepy
+
 app = Flask(__name__)
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 X_API_KEY = os.getenv("X_API_KEY")
 X_API_SECRET = os.getenv("X_API_SECRET")
@@ -28,11 +30,12 @@ def add_watermark(b):
         print(e)
     return b
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>', methods=['GET','POST'])
-def main(path):
+# FIX: JANGAN PAKE defaults={'path':''} LAGI, INI YANG BIKIN CRASH
+@app.route("/")
+@app.route("/<path:path>", methods=['GET','POST'])
+def handler(path=None):
     if request.method == 'GET':
-        return "Bot Aktif - Kiri Atas", 200
+        return "Bot Aktif - FIX Mapping - Kiri Atas", 200
     try:
         data = request.get_json()
         if not data or "message" not in data:
@@ -40,9 +43,10 @@ def main(path):
         msg = data["message"]
         chat_id = msg["chat"]["id"]
         if "text" in msg and msg["text"].startswith("/start"):
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"aktif bos"})
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"aktif bos - mapping fix"})
             return "ok",200
         caption = msg.get("caption") or msg.get("text") or ""
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"⏳ Proses: {caption[:20]}"})
         auth = tweepy.OAuth1UserHandler(X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET)
         api = tweepy.API(auth)
         client = tweepy.Client(consumer_key=X_API_KEY, consumer_secret=X_API_SECRET, access_token=X_ACCESS_TOKEN, access_token_secret=X_ACCESS_SECRET)
@@ -69,10 +73,12 @@ def main(path):
                 res = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":CHANNEL_ID,"text":caption})
             if res.ok:
                 cmid = res.json()["result"]["message_id"]
-        except: pass
+        except Exception as e:
+            print(f"Channel err {e}")
         curl = f"https://t.me/{CHANNEL_USERNAME}/{cmid}" if cmid else f"https://t.me/{CHANNEL_USERNAME}"
         kb = {"inline_keyboard":[[{"text":"See on X","url":xurl}],[{"text":"See on Channel","url":curl}]]}
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"✅ Berhasil POST! Watermark kiri atas","reply_markup":kb})
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"✅ Berhasil POST! Kiri Atas","reply_markup":kb})
     except Exception as e:
-        print(e)
+        print(traceback.format_exc())
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"❌ Error: {e}"})
     return "ok",200
