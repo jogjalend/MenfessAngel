@@ -1,18 +1,26 @@
-import os, io, requests, traceback
+import os, requests, io
 from flask import Flask, request
 from PIL import Image
 import tweepy
 
 app = Flask(__name__)
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-# SUPPORT 2 NAMA ENV BIAR GAK ERROR LAGI
 X_API_KEY = os.getenv("X_API_KEY") or os.getenv("API_KEY")
 X_API_SECRET = os.getenv("X_API_SECRET") or os.getenv("API_SECRET")
 X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN") or os.getenv("ACCESS_TOKEN")
-X_ACCESS_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET") or os.getenv("ACCESS_SECRET") or os.getenv("X_ACCESS_SECRET")
-CHANNEL_ID = os.getenv("CHANNEL_ID") or "-100392893142"
-CHANNEL_USERNAME = "menfessangel"
+X_ACCESS_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET") or os.getenv("ACCESS_SECRET")
+CHANNEL_ID = os.getenv("CHANNEL_ID") or "@jogja_lend"
+
+START_TEXT = """halo @{username} ✨
+
+UPDATE SUKSES JAM 23:18!
+
+ini bot promote Lend Angel.
+kirim foto + caption yaa"""
+
+SUCCESS_TEXT = """✅ BERHASIL POST!
+
+Link ada di bawah ini yaa 👇"""
 
 def add_watermark(b):
     try:
@@ -21,64 +29,48 @@ def add_watermark(b):
             if os.path.exists(p):
                 logo = Image.open(p).convert("RGBA")
                 w,h = base.size
-                size = int(w*0.18)
-                logo = logo.resize((size,size))
-                base.paste(logo, (15, 15), logo)
+                logo.thumbnail((int(w*0.16), int(w*0.16)))
+                base.paste(logo, (w-logo.width-15, h-logo.height-15), logo)
                 out = io.BytesIO()
-                base.convert("RGB").save(out, format="JPEG", quality=90)
+                base.convert("RGB").save(out, format="JPEG", quality=92)
                 return out.getvalue()
-    except Exception as e:
-        print(e)
+    except: pass
     return b
 
-@app.route("/")
-@app.route("/<path:path>", methods=['GET','POST'])
-def handler(path=None):
-    if request.method == 'GET':
-        return "Bot Aktif - ENV FIX - Kiri Atas", 200
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>', methods=['GET','POST'])
+def main(path):
+    if request.method == 'GET': return "Bot Aktif Bos! 23:18", 200
     try:
         data = request.get_json()
-        if not data or "message" not in data:
-            return "ok",200
+        if not data or "message" not in data: return "ok",200
         msg = data["message"]
         chat_id = msg["chat"]["id"]
-        if "text" in msg and msg["text"].startswith("/start"):
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"aktif bos - env fix"})
+        username = msg["from"].get("username","user")
+        text_in = msg.get("text","")
+        if text_in.startswith("/start"):
+            txt = START_TEXT.format(username=username)
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
             return "ok",200
-        caption = msg.get("caption") or msg.get("text") or ""
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"⏳ Proses: {caption[:20]}"})
+        caption = msg.get("caption") or msg.get("text") or "menfess"
         auth = tweepy.OAuth1UserHandler(X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET)
         api = tweepy.API(auth)
         client = tweepy.Client(consumer_key=X_API_KEY, consumer_secret=X_API_SECRET, access_token=X_ACCESS_TOKEN, access_token_secret=X_ACCESS_SECRET)
-        fb = None
+        tweet_id = None
         if "photo" in msg:
-            fid = msg["photo"][-1]["file_id"]
-            r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={fid}").json()
+            file_id = msg["photo"][-1]["file_id"]
+            r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}").json()
             fp = r["result"]["file_path"]
             fb = requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}").content
-            fb = add_watermark(fb)
-        if fb:
-            open("/tmp/post.jpg","wb").write(fb)
+            wm = add_watermark(fb)
+            with open("/tmp/post.jpg","wb") as f: f.write(wm)
             media = api.media_upload("/tmp/post.jpg")
             resp = client.create_tweet(text=caption, media_ids=[media.media_id])
-        else:
+            tweet_id = resp.data['id']
+        elif "text" in msg:
             resp = client.create_tweet(text=caption)
-        tid = resp.data['id']
-        xurl = f"https://x.com/i/web/status/{tid}"
-        cmid = None
-        try:
-            if fb:
-                res = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":CHANNEL_ID,"caption":caption}, files={"photo":fb})
-            else:
-                res = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":CHANNEL_ID,"text":caption})
-            if res.ok:
-                cmid = res.json()["result"]["message_id"]
-        except Exception as e:
-            print(f"Channel err {e}")
-        curl = f"https://t.me/{CHANNEL_USERNAME}/{cmid}" if cmid else f"https://t.me/{CHANNEL_USERNAME}"
-        kb = {"inline_keyboard":[[{"text":"See on X","url":xurl}],[{"text":"See on Channel","url":curl}]]}
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"✅ Berhasil POST! Kiri Atas","reply_markup":kb})
-    except Exception as e:
-        print(traceback.format_exc())
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"❌ Error: {e}"})
+            tweet_id = resp.data['id']
+        x_url = f"https://x.com/i/web/status/{tweet_id}" if tweet_id else "https://x.com/jogjalend"
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":SUCCESS_TEXT})
+    except Exception as e: print(e)
     return "ok",200
