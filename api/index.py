@@ -1,26 +1,16 @@
-import os, requests, io
+import os, io, requests, traceback
 from flask import Flask, request
 from PIL import Image
 import tweepy
-
 app = Flask(__name__)
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 X_API_KEY = os.getenv("X_API_KEY") or os.getenv("API_KEY")
 X_API_SECRET = os.getenv("X_API_SECRET") or os.getenv("API_SECRET")
 X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN") or os.getenv("ACCESS_TOKEN")
-X_ACCESS_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET") or os.getenv("ACCESS_SECRET")
+X_ACCESS_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET") or os.getenv("ACCESS_SECRET") or os.getenv("X_ACCESS_SECRET")
 CHANNEL_ID = os.getenv("CHANNEL_ID") or "@jogja_lend"
-
-START_TEXT = """halo @{username} ✨
-
-UPDATE SUKSES JAM 23:18!
-
-ini bot promote Lend Angel.
-kirim foto + caption yaa"""
-
-SUCCESS_TEXT = """✅ BERHASIL POST!
-
-Link ada di bawah ini yaa 👇"""
+CHANNEL_USERNAME = "jogja_lend"
 
 def add_watermark(b):
     try:
@@ -29,48 +19,130 @@ def add_watermark(b):
             if os.path.exists(p):
                 logo = Image.open(p).convert("RGBA")
                 w,h = base.size
-                logo.thumbnail((int(w*0.16), int(w*0.16)))
-                base.paste(logo, (w-logo.width-15, h-logo.height-15), logo)
+                size = int(w*0.18)
+                logo = logo.resize((size,size))
+                base.paste(logo, (15, 15), logo)
                 out = io.BytesIO()
-                base.convert("RGB").save(out, format="JPEG", quality=92)
+                base.convert("RGB").save(out, format="JPEG", quality=90)
                 return out.getvalue()
     except: pass
     return b
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>', methods=['GET','POST'])
-def main(path):
-    if request.method == 'GET': return "Bot Aktif Bos! 23:18", 200
+@app.route("/")
+@app.route("/<path:path>", methods=['GET','POST'])
+def handler(path=None):
+    if request.method == 'GET': return "Bot Aktif @jogja_lend", 200
     try:
         data = request.get_json()
+
+        # === CALLBACK BUTTON ===
+        if "callback_query" in data:
+            cq = data["callback_query"]
+            cb_data = cq["data"]
+            chat_id = cq["message"]["chat"]["id"]
+            msg_id = cq["message"]["message_id"]
+
+            if cb_data == "profil":
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
+                uname = cq["from"].get("username","-")
+                txt = f"👤 Profil\n\nID: {chat_id}\nUsername: @{uname}\n\nFree Daily Quota: Text 50, Media 10"
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
+                return "ok",200
+
+            if cb_data == "info_bot":
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"📋 Bot Menfess Angel\nFree Daily Quota: Text 50, Media 10\npertanyaan & aduan: @Jogja_Lend"})
+                return "ok",200
+
+            if cb_data.startswith("delete|"):
+                _, tweet_id, ch_msg_id = cb_data.split("|")
+                try:
+                    client = tweepy.Client(consumer_key=X_API_KEY, consumer_secret=X_API_SECRET, access_token=X_ACCESS_TOKEN, access_token_secret=X_ACCESS_SECRET)
+                    client.delete_tweet(tweet_id)
+                except: pass
+                try:
+                    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":CHANNEL_ID,"message_id":ch_msg_id})
+                except: pass
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"],"text":"✅ Post dihapus!"})
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":"🗑️ Post berhasil dihapus!"})
+            return "ok",200
+
         if not data or "message" not in data: return "ok",200
         msg = data["message"]
         chat_id = msg["chat"]["id"]
-        username = msg["from"].get("username","user")
-        text_in = msg.get("text","")
-        if text_in.startswith("/start"):
-            txt = START_TEXT.format(username=username)
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
+
+        # === /START BARU SESUAI FOTO LU ===
+        if "text" in msg and msg["text"].startswith("/start"):
+            from_user = msg.get("from", {})
+            first_name = from_user.get("first_name", "kamu")
+            username = from_user.get("username", "jogja_lend")
+            txt = f"""halo,{first_name} !
+
+username anda:@{username} .
+
+ini adalah bot promote lend angel.
+anda bisa mengirimkan text beserta foto diri kalian disini, let's go!
+
+📣 Pertanyaan & dukungan: @jogja_lend"""
+            kb_start = {
+                "inline_keyboard": [
+                    [{"text":"👤 Profil","callback_data":"profil"}],
+                    [{"text":"📋 Informasi Bot","callback_data":"info_bot"}]
+                ]
+            }
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt,"reply_markup":kb_start})
             return "ok",200
-        caption = msg.get("caption") or msg.get("text") or "menfess"
+
+        # === PROSES POSTING ===
+        caption = msg.get("caption") or msg.get("text") or ""
+        if not caption and "photo" not in msg:
+            return "ok",200
+
         auth = tweepy.OAuth1UserHandler(X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET)
         api = tweepy.API(auth)
         client = tweepy.Client(consumer_key=X_API_KEY, consumer_secret=X_API_SECRET, access_token=X_ACCESS_TOKEN, access_token_secret=X_ACCESS_SECRET)
-        tweet_id = None
+        fb = None
         if "photo" in msg:
-            file_id = msg["photo"][-1]["file_id"]
-            r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}").json()
+            fid = msg["photo"][-1]["file_id"]
+            r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={fid}").json()
             fp = r["result"]["file_path"]
             fb = requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}").content
-            wm = add_watermark(fb)
-            with open("/tmp/post.jpg","wb") as f: f.write(wm)
+            fb = add_watermark(fb)
+
+        if fb:
+            open("/tmp/post.jpg","wb").write(fb)
             media = api.media_upload("/tmp/post.jpg")
             resp = client.create_tweet(text=caption, media_ids=[media.media_id])
-            tweet_id = resp.data['id']
-        elif "text" in msg:
+        else:
             resp = client.create_tweet(text=caption)
-            tweet_id = resp.data['id']
-        x_url = f"https://x.com/i/web/status/{tweet_id}" if tweet_id else "https://x.com/jogjalend"
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":SUCCESS_TEXT})
-    except Exception as e: print(e)
+
+        tid = resp.data['id']
+        xurl = f"https://x.com/i/web/status/{tid}"
+        res = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":CHANNEL_ID,"caption":caption}, files={"photo":fb}) if fb else requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":CHANNEL_ID,"text":caption})
+        cmid = res.json()["result"]["message_id"] if res.ok else "0"
+        curl = f"https://t.me/{CHANNEL_USERNAME}/{cmid}" if cmid!="0" else f"https://t.me/{CHANNEL_USERNAME}"
+
+        # === PESAN SUKSES YANG LU MAU ===
+        pesan = f"""✅ Berhasil mengirim menfess!
+
+Free Daily Quota
+Text: 0/50
+Media: 1/10
+
+Butuh bantuan? -> @jogja_lend"""
+
+        kb = {
+            "inline_keyboard":[
+                [{"text":"➡️ See on X","url":xurl}],
+                [{"text":"➡️ See on Channel","url":curl}],
+                [{"text":"🗑️ Delete Post","callback_data":f"delete|{tid}|{cmid}"}]
+            ]
+        }
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":pesan,"reply_markup":kb})
+
+    except Exception as e:
+        print(traceback.format_exc())
+        try:
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"❌ Error: {e}"})
+        except: pass
     return "ok",200
