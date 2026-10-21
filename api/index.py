@@ -21,21 +21,29 @@ def add_watermark(b):
                 w,h = base.size
                 size = int(w*0.18)
                 logo = logo.resize((size,size))
-                base.paste(logo, (15, 15), logo)
+                margin = 20
+                px = w - size - margin
+                py = h - size - margin
+                shadow = Image.new("RGBA", (int(size*1.08), int(size*1.08)), (0,0,0,160))
+                alpha = logo.split()[-1].resize((int(size*1.08), int(size*1.08)))
+                shadow.putalpha(alpha)
+                base.paste(shadow, (px-4, py-4), shadow)
+                base.paste(logo, (px, py), logo)
                 out = io.BytesIO()
-                base.convert("RGB").save(out, format="JPEG", quality=90)
+                base.convert("RGB").save(out, format="JPEG", quality=92)
                 return out.getvalue()
-    except: pass
+    except Exception as e:
+        print(f"Watermark error: {e}")
     return b
 
 @app.route("/")
 @app.route("/<path:path>", methods=['GET','POST'])
 def handler(path=None):
-    if request.method == 'GET': return "Bot Aktif @jogja_lend", 200
+    if request.method == 'GET': return "Bot Active @jogja_lend", 200
     try:
         data = request.get_json()
+        if not data: return "ok",200
 
-        # === CALLBACK BUTTON ===
         if "callback_query" in data:
             cq = data["callback_query"]
             cb_data = cq["data"]
@@ -45,13 +53,13 @@ def handler(path=None):
             if cb_data == "profil":
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
                 uname = cq["from"].get("username","-")
-                txt = f"👤 Profil\n\nID: {chat_id}\nUsername: @{uname}\n\nFree Daily Quota: Text 50, Media 10"
+                txt = f"👤 Profile\n\nID: {chat_id}\nUsername: @{uname}\n\nFree Daily Quota: Text 5, Media 5"
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
                 return "ok",200
 
             if cb_data == "info_bot":
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"📋 Bot Menfess Angel\nFree Daily Quota: Text 50, Media 10\npertanyaan & aduan: @Jogja_Lend"})
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"📋 Angel Menfess Bot\nFree Daily Quota: Text 5, Media 5\nQuestions & Support: @Jogja_Lend"})
                 return "ok",200
 
             if cb_data.startswith("delete|"):
@@ -63,40 +71,32 @@ def handler(path=None):
                 try:
                     requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":CHANNEL_ID,"message_id":ch_msg_id})
                 except: pass
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"],"text":"✅ Post dihapus!"})
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":"🗑️ Post berhasil dihapus!"})
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"],"text":"✅ Post deleted!"})
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":"🗑️ Post successfully deleted!"})
             return "ok",200
 
-        if not data or "message" not in data: return "ok",200
+        if "message" not in data: return "ok",200
         msg = data["message"]
         chat_id = msg["chat"]["id"]
 
-        # === /START BARU SESUAI FOTO LU ===
         if "text" in msg and msg["text"].startswith("/start"):
             from_user = msg.get("from", {})
-            first_name = from_user.get("first_name", "kamu")
+            first_name = from_user.get("first_name", "you")
             username = from_user.get("username", "jogja_lend")
-            txt = f"""halo,{first_name} !
+            txt = f"""Halo, {first_name}! 👋
 
-username anda:@{username} .
+@{username}
 
-ini adalah bot promote lend angel.
-anda bisa mengirimkan text beserta foto diri kalian disini, let's go!
+Buat menfess mu di sini
+Auto post to Channel & X
 
-📣 Pertanyaan & dukungan: @jogja_lend"""
-            kb_start = {
-                "inline_keyboard": [
-                    [{"text":"👤 Profil","callback_data":"profil"}],
-                    [{"text":"📋 Informasi Bot","callback_data":"info_bot"}]
-                ]
-            }
+📩 Support: @jogja_lend"""
+            kb_start = {"inline_keyboard": [[{"text":"👤 Profile","callback_data":"profil"}], [{"text":"📋 Bot Information","callback_data":"info_bot"}]]}
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt,"reply_markup":kb_start})
             return "ok",200
 
-        # === PROSES POSTING ===
         caption = msg.get("caption") or msg.get("text") or ""
-        if not caption and "photo" not in msg:
-            return "ok",200
+        if not caption and "photo" not in msg: return "ok",200
 
         auth = tweepy.OAuth1UserHandler(X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET)
         api = tweepy.API(auth)
@@ -110,7 +110,7 @@ anda bisa mengirimkan text beserta foto diri kalian disini, let's go!
             fb = add_watermark(fb)
 
         if fb:
-            open("/tmp/post.jpg","wb").write(fb)
+            with open("/tmp/post.jpg","wb") as f: f.write(fb)
             media = api.media_upload("/tmp/post.jpg")
             resp = client.create_tweet(text=caption, media_ids=[media.media_id])
         else:
@@ -122,27 +122,18 @@ anda bisa mengirimkan text beserta foto diri kalian disini, let's go!
         cmid = res.json()["result"]["message_id"] if res.ok else "0"
         curl = f"https://t.me/{CHANNEL_USERNAME}/{cmid}" if cmid!="0" else f"https://t.me/{CHANNEL_USERNAME}"
 
-        # === PESAN SUKSES YANG LU MAU ===
-        pesan = f"""✅ Berhasil mengirim menfess!
+        pesan = f"""✅ Menfess Sent Successfully!
 
 Free Daily Quota
-Text: 0/50
-Media: 1/10
+Text: 0/5
+Media: 1/5
 
-Butuh bantuan? -> @jogja_lend"""
-
-        kb = {
-            "inline_keyboard":[
-                [{"text":"➡️ See on X","url":xurl}],
-                [{"text":"➡️ See on Channel","url":curl}],
-                [{"text":"🗑️ Delete Post","callback_data":f"delete|{tid}|{cmid}"}]
-            ]
-        }
+Need help? -> @jogja_lend"""
+        kb = {"inline_keyboard":[[{"text":"➡️ See on X","url":xurl}], [{"text":"➡️ See on Channel","url":curl}], [{"text":"🗑️ Delete Post","callback_data":f"delete|{tid}|{cmid}"}]]}
         requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":pesan,"reply_markup":kb})
 
     except Exception as e:
         print(traceback.format_exc())
-        try:
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"❌ Error: {e}"})
+        try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"❌ Error: {e}"})
         except: pass
     return "ok",200
