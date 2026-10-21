@@ -20,7 +20,6 @@ def add_watermark(b):
                 w,h = base.size
                 size = int(w*0.18)
                 logo = logo.resize((size,size))
-                # KIRI ATAS
                 base.paste(logo, (15, 15), logo)
                 out = io.BytesIO()
                 base.convert("RGB").save(out, format="JPEG", quality=90)
@@ -41,7 +40,7 @@ def main(path):
         msg = data["message"]
         chat_id = msg["chat"]["id"]
         if "text" in msg and msg["text"].startswith("/start"):
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"aktif"})
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"aktif bos"})
             return "ok",200
         caption = msg.get("caption") or msg.get("text") or ""
         auth = tweepy.OAuth1UserHandler(X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET)
