@@ -15,25 +15,26 @@ CHANNEL_USERNAME = "menfessangel"
 def add_watermark(b):
     try:
         base = Image.open(io.BytesIO(b)).convert("RGBA")
-        for p in ["logo.png","api/logo.png"]:
+        for p in ["logo.png","api/logo.png","logo_pro_white.png"]:
             if os.path.exists(p):
                 logo = Image.open(p).convert("RGBA")
                 w,h = base.size
-                size = int(w*0.18)
-                logo = logo.resize((size,size))
-                margin = 20
-                px = w - size - margin
-                py = h - size - margin
-                shadow = Image.new("RGBA", (int(size*1.08), int(size*1.08)), (0,0,0,160))
-                alpha = logo.split()[-1].resize((int(size*1.08), int(size*1.08)))
-                shadow.putalpha(alpha)
-                base.paste(shadow, (px-4, py-4), shadow)
+                size = int(w*0.12)  # 12% aja, jangan 18%
+                logo.thumbnail((size,size))
+                # Transparansi 35% biar estetik
+                alpha = logo.split()[-1]
+                alpha = alpha.point(lambda p: int(p*0.65))
+                logo.putalpha(alpha)
+                
+                margin = 24
+                px = w - logo.width - margin
+                py = h - logo.height - margin
                 base.paste(logo, (px, py), logo)
+                
                 out = io.BytesIO()
                 base.convert("RGB").save(out, format="JPEG", quality=92)
                 return out.getvalue()
-    except Exception as e:
-        print(f"Watermark error: {e}")
+    except: pass
     return b
 
 @app.route("/")
