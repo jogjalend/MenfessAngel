@@ -12,29 +12,47 @@ X_ACCESS_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET") or os.getenv("ACCESS_SECRET
 CHANNEL_ID = os.getenv("CHANNEL_ID") or "@menfessangel"
 CHANNEL_USERNAME = "menfessangel"
 
+HASHTAG = "\n\n#jogjalend"
+
+def add_hashtag(text):
+    if not text:
+        return HASHTAG.strip()
+    if "#jogjalend" in text.lower():
+        return text
+    return text.strip() + HASHTAG
+
 def add_watermark(b):
     try:
         base = Image.open(io.BytesIO(b)).convert("RGBA")
-        for p in ["logo.png","api/logo.png","logo_pro_white.png"]:
+        for p in ["logo.png","api/logo.png"]:
             if os.path.exists(p):
                 logo = Image.open(p).convert("RGBA")
                 w,h = base.size
-                size = int(w*0.12)  # 12% aja, jangan 18%
-                logo.thumbnail((size,size))
-                # Transparansi 35% biar estetik
-                alpha = logo.split()[-1]
-                alpha = alpha.point(lambda p: int(p*0.65))
-                logo.putalpha(alpha)
+                # FIX: 15% biar jelas, naik dikit
+                size = int(w*0.15)
+                logo.thumbnail((size,size), Image.LANCZOS)
                 
-                margin = 24
-                px = w - logo.width - margin
-                py = h - logo.height - margin
+                # FIX: bikin putih solid 90% biar JELAS di foto apapun
+                new_data = []
+                for r,g,bl,a in logo.getdata():
+                    if a > 20:
+                        new_data.append((255,255,255,230))
+                    else:
+                        new_data.append((255,255,255,0))
+                logo.putdata(new_data)
+                
+                # FIX: posisinya naik, jangan nempel bawah
+                margin_right = 35
+                margin_bottom = 55  # tadinya 24, sekarang 55 naik dikit
+                px = w - logo.width - margin_right
+                py = h - logo.height - margin_bottom
                 base.paste(logo, (px, py), logo)
                 
                 out = io.BytesIO()
-                base.convert("RGB").save(out, format="JPEG", quality=92)
+                base.convert("RGB").save(out, format="JPEG", quality=95)
                 return out.getvalue()
-    except: pass
+    except Exception as e:
+        print(f"watermark error: {e}")
     return b
 
 @app.route("/")
@@ -96,8 +114,11 @@ Auto post to Channel & X
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt,"reply_markup":kb_start})
             return "ok",200
 
-        caption = msg.get("caption") or msg.get("text") or ""
-        if not caption and "photo" not in msg: return "ok",200
+        raw_caption = msg.get("caption") or msg.get("text") or ""
+        if not raw_caption and "photo" not in msg: return "ok",200
+
+        # FIX: TAMBAH HASHTAG OTOMATIS
+        caption = add_hashtag(raw_caption)
 
         auth = tweepy.OAuth1UserHandler(X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET)
         api = tweepy.API(auth)
