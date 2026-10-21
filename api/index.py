@@ -2,11 +2,10 @@ import os, requests, io
 from PIL import Image
 import tweepy
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-X_API_KEY = os.getenv("X_API_KEY")
-X_API_SECRET = os.getenv("X_API_SECRET")
-X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN")
-X_ACCESS_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET")
+X_API_KEY = os.getenv("X_API_KEY") or os.getenv("API_KEY")
+X_API_SECRET = os.getenv("X_API_SECRET") or os.getenv("API_SECRET")
+X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN") or os.getenv("ACCESS_TOKEN")
+X_ACCESS_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET") or os.getenv("ACCESS_SECRET")
 
 def add_watermark(base_image_bytes):
     base = Image.open(io.BytesIO(base_image_bytes)).convert("RGBA")
