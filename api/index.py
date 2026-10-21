@@ -1,99 +1,96 @@
-import os
-import telebot
-import tweepy
-from flask import Flask, request
-from datetime import datetime
+import os, requests, io
 from PIL import Image
+import tweepy
 
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
-ACCESS_SECRET = os.getenv("ACCESS_SECRET")
-TELEGRAM_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+X_API_KEY = os.getenv("X_API_KEY")
+X_API_SECRET = os.getenv("X_API_SECRET")
+X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN")
+X_ACCESS_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET")
 
-client_x = tweepy.Client(consumer_key=API_KEY, consumer_secret=API_SECRET, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_SECRET)
-auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET)
-api_v1 = tweepy.API(auth)
+def add_watermark(base_image_bytes):
+    base = Image.open(io.BytesIO(base_image_bytes)).convert("RGBA")
+    # cari logo.png
+    logo_path = "logo.png"
+    if not os.path.exists(logo_path):
+        logo_path = "api/logo.png"
+    if not os.path.exists(logo_path):
+        return base_image_bytes # kalau gak ada logo, post polosan
+    
+    logo = Image.open(logo_path).convert("RGBA")
+    # resize logo 15% dari lebar foto
+    w, h = base.size
+    logo_size = int(w * 0.15)
+    logo.thumbnail((logo_size, logo_size))
+    
+    # taruh pojok kanan bawah dengan margin 20px
+    x = w - logo.width - 20
+    y = h - logo.height - 20
+    
+    base.paste(logo, (x, y), logo)
+    
+    out = io.BytesIO()
+    base.convert("RGB").save(out, format="JPEG", quality=95)
+    out.seek(0)
+    return out.getvalue()
 
-bot = telebot.TeleBot(TELEGRAM_TOKEN)
-app = Flask(__name__)
-user_quota = {}
-
-def get_quota(uid):
-    today = datetime.now().strftime("%Y-%m-%d")
-    if uid not in user_quota or user_quota[uid]['date'] != today:
-        user_quota[uid] = {'date': today, 'text': 0, 'media': 0}
-    return user_quota[uid]
-
-def add_watermark_with_logo(base_path, logo_path="logo.png"):
+def handler(request):
     try:
-        base = Image.open(base_path).convert("RGBA")
-        # Coba cari logo.png di root, kalau gak ketemu coba di ../logo.png
-        if not os.path.exists(logo_path):
-            logo_path = "../logo.png"
-        logo = Image.open(logo_path).convert("RGBA")
-        logo_width = int(base.width * 0.20)
-        ratio = logo_width / float(logo.width)
-        logo_height = int(float(logo.height) * float(ratio))
-        logo = logo.resize((logo_width, logo_height), Image.LANCZOS)
-        logo.putalpha(180)
-        pos = (base.width - logo.width - 15, base.height - logo.height - 15)
-        base.paste(logo, pos, logo)
-        base.convert("RGB").save(base_path)
-        return True
+        data = request.get_json() if hasattr(request, 'get_json') else request.json
+        if not data or "message" not in data:
+            return {"statusCode": 200}
+        
+        msg = data["message"]
+        chat_id = msg["chat"]["id"]
+        
+        if "photo" not in msg:
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={"chat_id": chat_id, "text": "Kirim FOTO + caption bos! Contoh: kirim foto terus tulis caption 'spill jogja'"})
+            return {"statusCode": 200}
+        
+        caption = msg.get("caption", "") or "menfess"
+        photo = msg["photo"][-1] # ambil resolusi terbesar
+        file_id = photo["file_id"]
+        
+        # get file path telegram
+        r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}").json()
+        file_path = r["result"]["file_path"]
+        file_bytes = requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}").content
+        
+        # watermark
+        watermarked = add_watermark(file_bytes)
+        
+        # post ke X
+        auth = tweepy.OAuth1UserHandler(X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET)
+        api = tweepy.API(auth)
+        client = tweepy.Client(consumer_key=X_API_KEY, consumer_secret=X_API_SECRET,
+                                access_token=X_ACCESS_TOKEN, access_token_secret=X_ACCESS_SECRET)
+        
+        # upload media dulu
+        # save temp
+        with open("/tmp/post.jpg", "wb") as f:
+            f.write(watermarked)
+        
+        media = api.media_upload("/tmp/post.jpg")
+        client.create_tweet(text=caption, media_ids=[media.media_id])
+        
+        # bales di telegram
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={"chat_id": chat_id, "text": f"✅ BERHASIL POST KE X @jogjalend!\n\nCaption: {caption}"})
+            
     except Exception as e:
-        print(f"WATERMARK ERROR: {e}")
-        return False
+        print(f"ERROR: {e}")
+        try:
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={"chat_id": chat_id, "text": f"❌ Gagal: {e}"})
+        except: pass
+    
+    return {"statusCode": 200}
 
-@bot.message_handler(content_types=['text', 'photo', 'video', 'document'])
-def all_handler(message):
-    if message.text and message.text.startswith('/start'):
-        name = message.from_user.first_name or "kamu"
-        txt = f"halo, {name} ! ini bot promote lend angel. kirim text/foto disini ya!\n\nSisa: Text {get_quota(message.from_user.id)['text']}/5, Media {get_quota(message.from_user.id)['media']}/3"
-        bot.send_message(message.chat.id, txt)
-        return
-    q = get_quota(message.from_user.id)
-    is_media = message.content_type in ['photo', 'video']
-    if is_media:
-        if q['media'] >= 3:
-            bot.reply_to(message, "❌ Kuota Media habis (3/3)"); return
-        q['media'] += 1
-        base_text = message.caption if message.caption else " "
-    else:
-        if q['text'] >= 5:
-            bot.reply_to(message, "❌ Kuota Text habis (5/5)"); return
-        q['text'] += 1
-        base_text = message.text or " "
-    text = f"{base_text}\n\n#jogjalend" if "#jogjalend" not in base_text.lower() else base_text
-    try:
-        media_ids = []
-        if is_media:
-            file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.video.file_id
-            file_info = bot.get_file(file_id)
-            downloaded = bot.download_file(file_info.file_path)
-            temp_path = "/tmp/temp_media.jpg"
-            with open(temp_path, "wb") as f:
-                f.write(downloaded)
-            add_watermark_with_logo(temp_path)
-            media = api_v1.media_upload(temp_path)
-            media_ids.append(media.media_id)
-        if media_ids:
-            client_x.create_tweet(text=text, media_ids=media_ids)
-        else:
-            client_x.create_tweet(text=text)
-        bot.reply_to(message, f"✅ Terkirim! Sisa: Text {q['text']}/5, Media {q['media']}/3")
-    except Exception as e:
-        bot.reply_to(message, f"❌ Error: {e}")
-
-@app.route('/', methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return ''
-    return 'OK'
-
-@app.route('/')
-def index():
-    return 'BOT JALAN - MenfessAngel + WATERMARK LOGO'
+# buat Vercel python
+def app(environ, start_response):
+    from werkzeug.wrappers import Request, Response
+    request = Request(environ)
+    result = handler(request)
+    response = Response(status=result["statusCode"])
+    return response(environ, start_response)
