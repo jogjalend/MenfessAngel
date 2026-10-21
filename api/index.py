@@ -1,7 +1,8 @@
-import os, io, requests, traceback
+import os, io, json, requests, traceback
 from flask import Flask, request
 from PIL import Image
 import tweepy
+from datetime import datetime
 app = Flask(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -13,12 +14,31 @@ CHANNEL_ID = os.getenv("CHANNEL_ID") or "@menfessangel"
 CHANNEL_USERNAME = "menfessangel"
 
 HASHTAG = "\n\n#jogjalend"
+QUOTA_FILE = "/tmp/quota.json"
+LIMIT_TEXT = 5
+LIMIT_MEDIA = 5
+
+def load_quota():
+    try:
+        if os.path.exists(QUOTA_FILE):
+            with open(QUOTA_FILE, "r") as f:
+                return json.load(f)
+    except: pass
+    return {}
+
+def save_quota(data):
+    try:
+        with open(QUOTA_FILE, "w") as f:
+            json.dump(data, f)
+    except: pass
+
+def get_today_key(chat_id):
+    today = datetime.now().strftime("%Y-%m-%d")
+    return f"{chat_id}_{today}"
 
 def add_hashtag(text):
-    if not text:
-        return HASHTAG.strip()
-    if "#jogjalend" in text.lower():
-        return text
+    if not text: return HASHTAG.strip()
+    if "#jogjalend" in text.lower(): return text
     return text.strip() + HASHTAG
 
 def add_watermark(b):
@@ -28,31 +48,20 @@ def add_watermark(b):
             if os.path.exists(p):
                 logo = Image.open(p).convert("RGBA")
                 w,h = base.size
-                # FIX: 15% biar jelas, naik dikit
                 size = int(w*0.15)
                 logo.thumbnail((size,size), Image.LANCZOS)
-                
-                # FIX: bikin putih solid 90% biar JELAS di foto apapun
-                new_data = []
+                data = []
                 for r,g,bl,a in logo.getdata():
-                    if a > 20:
-                        new_data.append((255,255,255,230))
-                    else:
-                        new_data.append((255,255,255,0))
-                logo.putdata(new_data)
-                
-                # FIX: posisinya naik, jangan nempel bawah
-                margin_right = 35
-                margin_bottom = 55  # tadinya 24, sekarang 55 naik dikit
-                px = w - logo.width - margin_right
-                py = h - logo.height - margin_bottom
+                    if a > 20: data.append((255,255,255,230))
+                    else: data.append((255,255,255,0))
+                logo.putdata(data)
+                px = w - logo.width - 35
+                py = h - logo.height - 55
                 base.paste(logo, (px, py), logo)
-                
                 out = io.BytesIO()
                 base.convert("RGB").save(out, format="JPEG", quality=95)
                 return out.getvalue()
-    except Exception as e:
-        print(f"watermark error: {e}")
+    except: pass
     return b
 
 @app.route("/")
@@ -68,19 +77,19 @@ def handler(path=None):
             cb_data = cq["data"]
             chat_id = cq["message"]["chat"]["id"]
             msg_id = cq["message"]["message_id"]
-
             if cb_data == "profil":
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
-                uname = cq["from"].get("username","-")
-                txt = f"👤 Profile\n\nID: {chat_id}\nUsername: @{uname}\n\nFree Daily Quota: Text 5, Media 5"
+                # Tampilkan quota asli
+                quotas = load_quota()
+                key = get_today_key(chat_id)
+                q = quotas.get(key, {"text":0,"media":0})
+                txt = f"👤 Profile\n\nID: {chat_id}\nToday Usage\nText: {q['text']}/{LIMIT_TEXT}\nMedia: {q['media']}/{LIMIT_MEDIA}"
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
                 return "ok",200
-
             if cb_data == "info_bot":
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"📋 Angel Menfess Bot\nFree Daily Quota: Text 5, Media 5\nQuestions & Support: @Jogja_Lend"})
                 return "ok",200
-
             if cb_data.startswith("delete|"):
                 _, tweet_id, ch_msg_id = cb_data.split("|")
                 try:
@@ -102,14 +111,7 @@ def handler(path=None):
             from_user = msg.get("from", {})
             first_name = from_user.get("first_name", "you")
             username = from_user.get("username", "jogja_lend")
-            txt = f"""Halo, {first_name}! 👋
-
-@{username}
-
-Buat menfess mu di sini
-Auto post to Channel & X
-
-📩 Support: @jogja_lend"""
+            txt = f"Halo, {first_name}! 👋\n\n@{username}\n\nBuat menfess mu di sini\nAuto post to Channel & X\n\n📩 Support: @jogja_lend"
             kb_start = {"inline_keyboard": [[{"text":"👤 Profile","callback_data":"profil"}], [{"text":"📋 Bot Information","callback_data":"info_bot"}]]}
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt,"reply_markup":kb_start})
             return "ok",200
@@ -117,14 +119,27 @@ Auto post to Channel & X
         raw_caption = msg.get("caption") or msg.get("text") or ""
         if not raw_caption and "photo" not in msg: return "ok",200
 
-        # FIX: TAMBAH HASHTAG OTOMATIS
+        # CEK QUOTA DULU
+        quotas = load_quota()
+        key = get_today_key(chat_id)
+        if key not in quotas: quotas[key] = {"text":0,"media":0}
+        is_media = "photo" in msg
+        if is_media:
+            if quotas[key]["media"] >= LIMIT_MEDIA:
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"❌ Media quota habis! {LIMIT_MEDIA}/{LIMIT_MEDIA} hari ini. Coba lagi besok."})
+                return "ok",200
+        else:
+            if quotas[key]["text"] >= LIMIT_TEXT:
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"❌ Text quota habis! {LIMIT_TEXT}/{LIMIT_TEXT} hari ini. Coba lagi besok."})
+                return "ok",200
+
         caption = add_hashtag(raw_caption)
 
         auth = tweepy.OAuth1UserHandler(X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET)
         api = tweepy.API(auth)
         client = tweepy.Client(consumer_key=X_API_KEY, consumer_secret=X_API_SECRET, access_token=X_ACCESS_TOKEN, access_token_secret=X_ACCESS_SECRET)
         fb = None
-        if "photo" in msg:
+        if is_media:
             fid = msg["photo"][-1]["file_id"]
             r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={fid}").json()
             fp = r["result"]["file_path"]
@@ -138,19 +153,19 @@ Auto post to Channel & X
         else:
             resp = client.create_tweet(text=caption)
 
+        # UPDATE QUOTA SETELAH SUKSES
+        if is_media: quotas[key]["media"] += 1
+        else: quotas[key]["text"] += 1
+        save_quota(quotas)
+
         tid = resp.data['id']
         xurl = f"https://x.com/i/web/status/{tid}"
         res = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":CHANNEL_ID,"caption":caption}, files={"photo":fb}) if fb else requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":CHANNEL_ID,"text":caption})
         cmid = res.json()["result"]["message_id"] if res.ok else "0"
         curl = f"https://t.me/{CHANNEL_USERNAME}/{cmid}" if cmid!="0" else f"https://t.me/{CHANNEL_USERNAME}"
 
-        pesan = f"""✅ Menfess Sent Successfully!
-
-Free Daily Quota
-Text: 0/5
-Media: 1/5
-
-Need help? -> @jogja_lend"""
+        # PESAN SUKSES DENGAN QUOTA REAL
+        pesan = f"✅ Menfess Sent Successfully!\n\nFree Daily Quota\nText: {quotas[key]['text']}/{LIMIT_TEXT}\nMedia: {quotas[key]['media']}/{LIMIT_MEDIA}\n\nNeed help? -> @jogja_lend"
         kb = {"inline_keyboard":[[{"text":"➡️ See on X","url":xurl}], [{"text":"➡️ See on Channel","url":curl}], [{"text":"🗑️ Delete Post","callback_data":f"delete|{tid}|{cmid}"}]]}
         requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":pesan,"reply_markup":kb})
 
