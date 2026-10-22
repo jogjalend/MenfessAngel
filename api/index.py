@@ -73,61 +73,19 @@ def handler(path=None):
         if not data: return "ok",200
 
         if "callback_query" in data:
-    cq = data["callback_query"]
-    cb_data = cq["data"]
-    chat_id = cq["message"]["chat"]["id"]
-    msg_id = cq["message"]["message_id"]
-
-    if cb_data == "profil":
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
-        quotas = load_quota()
-        key = get_today_key(chat_id)
-        q = quotas.get(key, {"text":0,"media":0})
-        txt = f"👤 Profile\n\nID: {chat_id}\nToday Usage\nText: {q['text']}/{LIMIT_TEXT}\nMedia: {q['media']}/{LIMIT_MEDIA}"
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
-        return "ok",200
-
-    if cb_data == "info_bot":
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"📋 Angel Menfess Bot\nFree Daily Quota: Text 5, Media 5\nQuestions & Support: @Jogja_Lend"})
-        return "ok",200
-
-    if cb_data.startswith("delete|"):
-        try:
-            _, tweet_id, ch_msg_id = cb_data.split("|")
-
-            try:
-                client = tweepy.Client(
-                    consumer_key=X_API_KEY,
-                    consumer_secret=X_API_SECRET,
-                    access_token=X_ACCESS_TOKEN,
-                    access_token_secret=X_ACCESS_SECRET
-                )
-                client.delete_tweet(tweet_id)
-            except Exception:
-                pass
-
-            try:
-                requests.post(
-                    f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",
-                    json={"chat_id": CHANNEL_ID, "message_id": ch_msg_id}
-                )
-            except Exception:
-                pass
-
-            requests.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-                json={"callback_query_id": cq["id"], "text": "✅ Post deleted!"}
-            )
-            requests.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
-                json={"chat_id": chat_id, "message_id": msg_id, "text": "🗑️ Post successfully deleted!"}
-            )
-        except Exception:
-            pass
-        return "ok",200
-
-    return "ok",200
+            cq = data["callback_query"]
+            cb_data = cq["data"]
+            chat_id = cq["message"]["chat"]["id"]
+            msg_id = cq["message"]["message_id"]
+            if cb_data == "profil":
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
+                # Tampilkan quota asli
+                quotas = load_quota()
+                key = get_today_key(chat_id)
+                q = quotas.get(key, {"text":0,"media":0})
+                txt = f"👤 Profile\n\nID: {chat_id}\nToday Usage\nText: {q['text']}/{LIMIT_TEXT}\nMedia: {q['media']}/{LIMIT_MEDIA}"
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
+                return "ok",200
             if cb_data == "info_bot":
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"📋 Angel Menfess Bot\nFree Daily Quota: Text 5, Media 5\nQuestions & Support: @Jogja_Lend"})
@@ -161,6 +119,7 @@ def handler(path=None):
         raw_caption = msg.get("caption") or msg.get("text") or ""
         if not raw_caption and "photo" not in msg: return "ok",200
 
+        # CEK QUOTA DULU
         quotas = load_quota()
         key = get_today_key(chat_id)
         if key not in quotas: quotas[key] = {"text":0,"media":0}
@@ -194,44 +153,22 @@ def handler(path=None):
         else:
             resp = client.create_tweet(text=caption)
 
+        # UPDATE QUOTA SETELAH SUKSES
         if is_media: quotas[key]["media"] += 1
         else: quotas[key]["text"] += 1
         save_quota(quotas)
 
         tid = resp.data['id']
         xurl = f"https://x.com/i/web/status/{tid}"
-
-        # ===== AUTO REACT AKUN 2 LIKE + RETWEET =====
-        try:
-            if os.getenv("X2_API_KEY"):
-                client2 = tweepy.Client(
-                    consumer_key=os.getenv("X2_API_KEY"),
-                    consumer_secret=os.getenv("X2_API_SECRET"),
-                    access_token=os.getenv("X2_ACCESS_TOKEN"),
-                    access_token_secret=os.getenv("X2_ACCESS_SECRET")
-                )
-                client2.like(tid)
-                client2.retweet(tid)
-                print(f"Akun 2 sukses LIKE+RETWEET {tid}")
-        except Exception as e:
-            print(f"Auto react akun 2 gagal: {e}")
-        # ===== END AUTO REACT =====
-
         res = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":CHANNEL_ID,"caption":caption}, files={"photo":fb}) if fb else requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":CHANNEL_ID,"text":caption})
         cmid = res.json()["result"]["message_id"] if res.ok else "0"
         curl = f"https://t.me/{CHANNEL_USERNAME}/{cmid}" if cmid!="0" else f"https://t.me/{CHANNEL_USERNAME}"
 
-        pesan = f"👑 Menfess Sent Successfully!\n\nFree Daily Quota\nText: 0/5\nMedia: 1/5\n\nNeed help? -> @jogja_lend"
-kb = {"inline_keyboard": [
-    [
-        {"text": "➡️ See on X", "url": f"https://x.com/jogja_lend/status/{tid}"},
-        {"text": "➡️ See on Channel", "url": curl}
-    ],
-    [
-        {"text": "🗑️ Delete Post", "callback_data": f"delete_{tid}"}
-    ]
-]}
-requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": chat_id, "text": pesan, "reply_markup": kb})
+        # PESAN SUKSES DENGAN QUOTA REAL
+        pesan = f"✅ Menfess Sent Successfully!\n\nFree Daily Quota\nText: {quotas[key]['text']}/{LIMIT_TEXT}\nMedia: {quotas[key]['media']}/{LIMIT_MEDIA}\n\nNeed help? -> @jogja_lend"
+        kb = {"inline_keyboard":[[{"text":"➡️ See on X","url":xurl}], [{"text":"➡️ See on Channel","url":curl}], [{"text":"🗑️ Delete Post","callback_data":f"delete|{tid}|{cmid}"}]]}
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":pesan,"reply_markup":kb})
+
     except Exception as e:
         print(traceback.format_exc())
         try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"❌ Error: {e}"})
