@@ -178,10 +178,17 @@ def handler(path=None):
         cmid = res.json()["result"]["message_id"] if res.ok else "0"
         curl = f"https://t.me/{CHANNEL_USERNAME}/{cmid}" if cmid!="0" else f"https://t.me/{CHANNEL_USERNAME}"
 
-        pesan = f"✅ Menfess Sent Successfully!\n\nFree Daily Quota\nText: {quotas[key]['text']}/{LIMIT_TEXT}\nMedia: {quotas[key]['media']}/{LIMIT_MEDIA}\n\nNeed help? -> @jogja_lend"
-        kb = {"inline_keyboard":[[{"text":"➡️ See on X","url":xurl}], [{"text":"➡️ See on Channel","url":curl}], [{"text":"🗑️ Delete Post","callback_data":f"delete|{tid}|{cmid}"}]]}
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":pesan,"reply_markup":kb})
-
+        pesan = f" Menfess Sent Successfully!\n\nFree Daily Quota\nText: 0/5\nMedia: 1/5\n\nNeed help? -> @jogja_lend"
+kb = {"inline_keyboard": [
+    [
+        {"text": "➡️ See on X", "url": f"https://x.com/jogja_lend/status/{tid}"},
+        {"text": "➡️ See on Channel", "url": curl}
+    ],
+    [
+        {"text": "🗑️ Delete Post", "callback_data": f"delete_{tid}"}
+    ]
+]}
+requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": chat_id, "text": pesan, "reply_markup": kb})
     except Exception as e:
         print(traceback.format_exc())
         try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"❌ Error: {e}"})
