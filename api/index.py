@@ -178,7 +178,7 @@ def handler(path=None):
         cmid = res.json()["result"]["message_id"] if res.ok else "0"
         curl = f"https://t.me/{CHANNEL_USERNAME}/{cmid}" if cmid!="0" else f"https://t.me/{CHANNEL_USERNAME}"
 
-        pesan = f" Menfess Sent Successfully!\n\nFree Daily Quota\nText: 0/5\nMedia: 1/5\n\nNeed help? -> @jogja_lend"
+        pesan = f"👑 Menfess Sent Successfully!\n\nFree Daily Quota\nText: 0/5\nMedia: 1/5\n\nNeed help? -> @jogja_lend"
 kb = {"inline_keyboard": [
     [
         {"text": "➡️ See on X", "url": f"https://x.com/jogja_lend/status/{tid}"},
