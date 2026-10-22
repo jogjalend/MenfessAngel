@@ -73,18 +73,61 @@ def handler(path=None):
         if not data: return "ok",200
 
         if "callback_query" in data:
-            cq = data["callback_query"]
-            cb_data = cq["data"]
-            chat_id = cq["message"]["chat"]["id"]
-            msg_id = cq["message"]["message_id"]
-            if cb_data == "profil":
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
-                quotas = load_quota()
-                key = get_today_key(chat_id)
-                q = quotas.get(key, {"text":0,"media":0})
-                txt = f"👤 Profile\n\nID: {chat_id}\nToday Usage\nText: {q['text']}/{LIMIT_TEXT}\nMedia: {q['media']}/{LIMIT_MEDIA}"
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
-                return "ok",200
+    cq = data["callback_query"]
+    cb_data = cq["data"]
+    chat_id = cq["message"]["chat"]["id"]
+    msg_id = cq["message"]["message_id"]
+
+    if cb_data == "profil":
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
+        quotas = load_quota()
+        key = get_today_key(chat_id)
+        q = quotas.get(key, {"text":0,"media":0})
+        txt = f"👤 Profile\n\nID: {chat_id}\nToday Usage\nText: {q['text']}/{LIMIT_TEXT}\nMedia: {q['media']}/{LIMIT_MEDIA}"
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
+        return "ok",200
+
+    if cb_data == "info_bot":
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"📋 Angel Menfess Bot\nFree Daily Quota: Text 5, Media 5\nQuestions & Support: @Jogja_Lend"})
+        return "ok",200
+
+    if cb_data.startswith("delete|"):
+        try:
+            _, tweet_id, ch_msg_id = cb_data.split("|")
+
+            try:
+                client = tweepy.Client(
+                    consumer_key=X_API_KEY,
+                    consumer_secret=X_API_SECRET,
+                    access_token=X_ACCESS_TOKEN,
+                    access_token_secret=X_ACCESS_SECRET
+                )
+                client.delete_tweet(tweet_id)
+            except Exception:
+                pass
+
+            try:
+                requests.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",
+                    json={"chat_id": CHANNEL_ID, "message_id": ch_msg_id}
+                )
+            except Exception:
+                pass
+
+            requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+                json={"callback_query_id": cq["id"], "text": "✅ Post deleted!"}
+            )
+            requests.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
+                json={"chat_id": chat_id, "message_id": msg_id, "text": "🗑️ Post successfully deleted!"}
+            )
+        except Exception:
+            pass
+        return "ok",200
+
+    return "ok",200
             if cb_data == "info_bot":
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"📋 Angel Menfess Bot\nFree Daily Quota: Text 5, Media 5\nQuestions & Support: @Jogja_Lend"})
