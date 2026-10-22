@@ -1,3 +1,5 @@
-{
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index.py" }]
-}
+kb = {"inline_keyboard": [
+    [{"text": "➡️ See on X", "url": f"https://x.com/jogja_lend/status/{tid}"},
+     {"text": "➡️ See on Channel", "url": curl}],
+    [{"text": "🗑️ Delete Post", "callback_data": f"delete_{tid}"}]
+]}
