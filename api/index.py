@@ -85,7 +85,27 @@ def handler(path=None):
                 return "ok",200
             if cb_data == "info_bot":
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"Angel Menfess Bot\nFree Daily Quota: Text 5, Media 5\nSupport: @Jogja_Lend"})
+                info_txt = """Menfess Angel Bot - @jogja_lend
+
+CARA PAKAI:
+Kirim langsung text / foto + caption kesini.
+Auto posting ke X & Channel.
+
+KUOTA HARIAN:
+- Text: 5 / hari
+- Media: 5 / hari
+Reset jam 00:00 WIB
+
+RULES:
+1. Dilarang porn, SARA, judi
+2. Dilarang doxxing / spill data pribadi
+3. Dilarang spam & jualan
+4. Wajib pakai #jogjalend
+
+Langgar = banned permanen.
+
+Support: @Jogja_Lend"""
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":info_txt})
                 return "ok",200
             if cb_data.startswith("delete|"):
                 _, tweet_id, ch_msg_id = cb_data.split("|")
@@ -111,8 +131,7 @@ Auto-post to:
 - Channel: @menfessangel
 
 Free Daily Quota:
-Text 5/day 
-Media 5/day
+Text 5/day | Media 5/day
 
 Silakan kirim menfess kamu sekarang.
 Support: @Jogja_Lend"""
