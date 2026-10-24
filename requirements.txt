@@ -1,4 +1,3 @@
 Flask
 requests
 tweepy
-Pillow
