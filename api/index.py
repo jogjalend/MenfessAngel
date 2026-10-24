@@ -111,7 +111,8 @@ Auto-post to:
 - Channel: @menfessangel
 
 Free Daily Quota:
-Text 5/day | Media 5/day
+Text 5/day 
+Media 5/day
 
 Silakan kirim menfess kamu sekarang.
 Support: @Jogja_Lend"""
