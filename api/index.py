@@ -1,6 +1,3 @@
-Masukin
-
-
 import os, io, json, requests, traceback
 from flask import Flask, request
 from PIL import Image
