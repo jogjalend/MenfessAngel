@@ -97,11 +97,11 @@ KUOTA HARIAN:
 Reset jam 00:00 WIB
 
 RULES:
-1. Dilarang porn, SARA, judi
+1. Dilarang Spam Link Judol
 2. Dilarang doxxing / spill data pribadi
-3. Dilarang spam & jualan
+3. Dilarang spam link Grup Bodong
 4. Wajib pakai #jogjalend
-
+5. follow x : x.com/jogjalendpm
 Langgar = banned permanen.
 
 Support: @Jogja_Lend"""
@@ -131,7 +131,8 @@ Auto-post to:
 - Channel: @menfessangel
 
 Free Daily Quota:
-Text 5/day | Media 5/day
+Text  : 5
+Media : 5
 
 Silakan kirim menfess kamu sekarang.
 Support: @Jogja_Lend"""
