@@ -21,10 +21,11 @@ WIB = timezone(timedelta(hours=7))
 
 SESSION = requests.Session()
 LOGO_CACHE = None
-for p in ["logo.png","api/logo.png"]:
+for p in ["logo.png","api/logo.png","/tmp/logo.png"]:
     if os.path.exists(p):
         try:
             LOGO_CACHE = Image.open(p).convert("RGBA")
+            print(f"Logo loaded: {p}")
             break
         except: pass
 
@@ -62,6 +63,7 @@ def add_hashtag(text):
     if not text: return HASHTAG.strip()
     if "#jogjalend" in text.lower(): return text
     return text.strip() + HASHTAG
+
 def add_watermark_fast(b):
     if not LOGO_CACHE: return b
     try:
@@ -75,21 +77,25 @@ def add_watermark_fast(b):
         white.putalpha(alpha)
         base.paste(white, (w-logo.width-35, h-logo.height-55), white)
         out = io.BytesIO()
-        base.convert("RGB").save(out, format="JPEG", quality=92, optimize=True)
+        base.convert("RGB").save(out, format="JPEG", quality=90, optimize=True)
         return out.getvalue()
-    except:
+    except Exception as e:
+        print(f"WM fail: {e}")
         return b
+
 def post_to_threads(text):
     if not THREADS_TOKEN or not THREADS_USER_ID: return None
     try:
         url_create = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads"
         r1 = SESSION.post(url_create, data={"media_type": "TEXT","text": text,"access_token": THREADS_TOKEN}, timeout=15)
+        print(f"Threads create: {r1.text}")
         if not r1.ok: return None
         creation_id = r1.json().get("id")
         if not creation_id: return None
         time.sleep(3)
         url_pub = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish"
         r2 = SESSION.post(url_pub, data={"creation_id": creation_id,"access_token": THREADS_TOKEN}, timeout=15)
+        print(f"Threads publish: {r2.text}")
         if r2.ok: return r2.json().get("id")
         return None
     except Exception as e:
@@ -98,7 +104,7 @@ def post_to_threads(text):
 
 @app.route("/", methods=['GET'])
 def home():
-    return "Bot Active - OFF by default", 200
+    return "Bot Active - Photo Fixed", 200
 
 @app.route("/", methods=['POST'])
 @app.route("/api/index.py", methods=['POST'])
@@ -125,15 +131,13 @@ def handler():
 
 🆔 ID: {chat_id}
 🏷️ Daily Quota (WIB)
-
 📄 Text : {q['text']}/{LIMIT_TEXT}
 📪 Media: {q['media']}/{LIMIT_MEDIA}
 
 🔹 Telegram: @menfessangel - ON
 🔹 Threads: {'ON ✅' if threads_on else 'OFF ❌ (Default)'}
 
-{'Your posts will be shared to Threads' if threads_on else 'Your posts will NOT be shared to Threads. Click ON to enable.'}
-
+{'Your posts WILL be shared to Threads' if threads_on else 'Your posts will NOT be shared to Threads.\nYou must click ON to enable sharing.'}
 Quota reset 00:00 WIB."""
                 toggle_text = "🧵 Threads: ON ✅" if threads_on else "🧵 Threads: OFF ❌"
                 kb = {"inline_keyboard": [[{"text":toggle_text, "callback_data":"toggle_threads"}],[{"text":"🔙 Back","callback_data":"back_start"}]]}
@@ -149,19 +153,13 @@ Quota reset 00:00 WIB."""
                 uname = cq["from"].get("username")
                 tag = f"@{uname}" if uname else cq["from"].get("first_name")
                 txt = f"""👤 Profile - {tag}
-
 🆔 ID: {chat_id}
-🏷️ Daily Quota (WIB)
-
 📄 Text : {q['text']}/{LIMIT_TEXT}
 📪 Media: {q['media']}/{LIMIT_MEDIA}
 
-🔹 Telegram: @menfessangel - ON
 🔹 Threads: {'ON ✅' if new_val else 'OFF ❌'}
 
-{'Enabled! Your next menfess will be posted to Threads.' if new_val else 'Disabled. Your posts will only go to Telegram.'}
-
-Quota reset 00:00 WIB."""
+{'Enabled! Next menfess will be posted to Threads.' if new_val else 'Disabled. Posts will only go to Telegram.'}"""
                 toggle_text = "🧵 Threads: ON ✅" if new_val else "🧵 Threads: OFF ❌"
                 kb = {"inline_keyboard": [[{"text":toggle_text, "callback_data":"toggle_threads"}],[{"text":"🔙 Back","callback_data":"back_start"}]]}
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":kb})
@@ -177,7 +175,7 @@ Your menfess will be posted to @{CHANNEL_USERNAME}.
 🧵 Threads Sharing - Optional
 If you want your menfess to also be shared to Threads, you must activate it by clicking the ON button below.
 
-Current: {'ON ✅' if threads_on else 'OFF ❌ (Default)'}
+Current: {'ON ✅' if threads_on else 'OFF ❌ (Default - Telegram only)'}
 
 Limit: 5 texts & 5 media/day."""
                 kb = {"inline_keyboard": [[{"text":"📢 Channel","url":"https://t.me/menfessangel"}],[{"text":"👤 Profile","callback_data":"profil"},{"text":f"🧵 {'ON ✅' if threads_on else 'OFF ❌'}","callback_data":"toggle_threads"}]]}
@@ -231,17 +229,24 @@ Please send your menfess now."""
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"❌ Text quota exceeded for today!"})
             return "ok",200
 
+        # POSTING
         if is_media:
             fid = msg["photo"][-1]["file_id"]
             r = SESSION.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={fid}").json()
             fp = r["result"]["file_path"]
             fb = SESSION.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}").content
             fb = add_watermark_fast(fb)
-            res = SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":CHANNEL_ID,"caption":caption}, files={"photo":fb})
+            files = {"photo": ("menfess.jpg", fb, "image/jpeg")}
+            res = SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":CHANNEL_ID,"caption":caption}, files=files, timeout=30)
         else:
             res = SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":CHANNEL_ID,"text":caption})
+
+        print(f"Channel post: {res.text}")
+        if not res.ok:
+            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"❌ Failed to post to channel: {res.text}"})
+            return "ok",200
         
-        cmid = res.json()["result"]["message_id"] if res.ok else "0"
+        cmid = res.json()["result"]["message_id"]
         curl = f"https://t.me/{CHANNEL_USERNAME}/{cmid}"
 
         threads_id = None
@@ -272,5 +277,7 @@ Join Channel : @menfessangel"""
         SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":pesan,"reply_markup":kb})
 
     except Exception as e:
-        print(e)
+        print(f"ERROR: {e}")
+        import traceback
+        traceback.print_exc()
     return "ok",200
