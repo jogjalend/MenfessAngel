@@ -14,6 +14,7 @@ THREADS_USER_ID = os.getenv("THREADS_USER_ID")
 
 HASHTAG = "\n\n#jogjalend"
 QUOTA_FILE = "/tmp/quota.json"
+SETTINGS_FILE = "/tmp/settings.json"
 LIMIT_TEXT = 5
 LIMIT_MEDIA = 5
 WIB = timezone(timedelta(hours=7))
@@ -33,12 +34,39 @@ def load_quota():
             with open(QUOTA_FILE, "r") as f: return json.load(f)
     except: pass
     return {}
+
 def save_quota(data):
     try:
         with open(QUOTA_FILE, "w") as f: json.dump(data, f)
     except: pass
+
+def load_settings():
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, "r") as f: return json.load(f)
+    except: pass
+    return {}
+
+def save_settings(data):
+    try:
+        with open(SETTINGS_FILE, "w") as f: json.dump(data, f)
+    except: pass
+
+def is_threads_enabled(chat_id):
+    settings = load_settings()
+    # default ON = True
+    return settings.get(str(chat_id), {}).get("threads", True)
+
+def set_threads_enabled(chat_id, enabled):
+    settings = load_settings()
+    if str(chat_id) not in settings:
+        settings[str(chat_id)] = {}
+    settings[str(chat_id)]["threads"] = enabled
+    save_settings(settings)
+
 def get_today_key(chat_id):
     return f"{chat_id}_{datetime.now(WIB).strftime('%Y-%m-%d')}"
+
 def add_hashtag(text):
     if not text: return HASHTAG.strip()
     if "#jogjalend" in text.lower(): return text
@@ -67,7 +95,6 @@ def post_to_threads(text):
         print("THREADS env not set")
         return None
     try:
-        # 1. Create container
         url_create = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads"
         r1 = SESSION.post(url_create, data={
             "media_type": "TEXT",
@@ -80,10 +107,7 @@ def post_to_threads(text):
         creation_id = r1.json().get("id")
         if not creation_id:
             return None
-        
         time.sleep(3)
-        
-        # 2. Publish
         url_pub = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish"
         r2 = SESSION.post(url_pub, data={
             "creation_id": creation_id,
@@ -99,7 +123,7 @@ def post_to_threads(text):
 
 @app.route("/", methods=['GET'])
 def home():
-    return "Bot Active - FAST & THREADS", 200
+    return "Bot Active - PER USER TOGGLE", 200
 
 @app.route("/", methods=['POST'])
 @app.route("/api/index.py", methods=['POST'])
@@ -112,13 +136,17 @@ def handler():
             cq = data["callback_query"]
             cb_data = cq["data"]
             chat_id = cq["message"]["chat"]["id"]
+            msg_id = cq["message"]["message_id"]
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
+
             if cb_data == "profil":
                 quotas = load_quota()
                 key = get_today_key(chat_id)
                 q = quotas.get(key, {"text":0,"media":0})
+                threads_on = is_threads_enabled(chat_id)
                 uname = cq["from"].get("username")
                 tag = f"@{uname}" if uname else cq["from"].get("first_name")
+                status_threads = "ON ✅" if threads_on else "OFF ❌"
                 txt = f"""👤 Profile - {tag}
 
 🆔 ID: {chat_id}
@@ -127,11 +155,63 @@ def handler():
 📄 Text : {q['text']}/{LIMIT_TEXT}
 📪 Media: {q['media']}/{LIMIT_MEDIA}
 
-🔹 Telegram Channel: @menfessangel - ON
-🔹 Threads: ON
+🔹 Telegram: @menfessangel - ON
+🔹 Threads: {status_threads}
 
 Quota reset 00:00 WIB."""
-                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
+                toggle_text = "🧵 Threads: ON ✅" if threads_on else "🧵 Threads: OFF ❌"
+                kb = {"inline_keyboard": [
+                    [{"text":toggle_text, "callback_data":"toggle_threads"}],
+                    [{"text":"🔙 Back to Start","callback_data":"back_start"}]
+                ]}
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":kb})
+
+            elif cb_data == "toggle_threads":
+                current = is_threads_enabled(chat_id)
+                new_val = not current
+                set_threads_enabled(chat_id, new_val)
+                # refresh profile
+                quotas = load_quota()
+                key = get_today_key(chat_id)
+                q = quotas.get(key, {"text":0,"media":0})
+                uname = cq["from"].get("username")
+                tag = f"@{uname}" if uname else cq["from"].get("first_name")
+                status_threads = "ON ✅" if new_val else "OFF ❌"
+                txt = f"""👤 Profile - {tag}
+
+🆔 ID: {chat_id}
+🏷️ Daily Quota (WIB)
+
+📄 Text : {q['text']}/{LIMIT_TEXT}
+📪 Media: {q['media']}/{LIMIT_MEDIA}
+
+🔹 Telegram: @menfessangel - ON
+🔹 Threads: {status_threads}
+
+{'Menfess kamu akan dipost ke Telegram + Threads' if new_val else 'Menfess kamu hanya ke Telegram saja'}
+
+Quota reset 00:00 WIB."""
+                toggle_text = "🧵 Threads: ON ✅" if new_val else "🧵 Threads: OFF ❌"
+                kb = {"inline_keyboard": [
+                    [{"text":toggle_text, "callback_data":"toggle_threads"}],
+                    [{"text":"🔙 Back to Start","callback_data":"back_start"}]
+                ]}
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":kb})
+
+            elif cb_data == "back_start":
+                uname = cq["from"].get("username")
+                tag = f"@{uname}" if uname else cq["from"].get("first_name")
+                caption = f"""Welcome, {tag}.
+
+Posts will go to @menfessangel + Threads (sesuai setting kamu).
+
+Limit: 5 texts & 5 media/day.
+
+Please send your menfess now."""
+                threads_on = is_threads_enabled(chat_id)
+                kb = {"inline_keyboard": [[{"text":"📢 Channel","url":"https://t.me/menfessangel"}],[{"text":"👤 Profile","callback_data":"profil"},{"text":f"🧵 {'ON ✅' if threads_on else 'OFF ❌'}","callback_data":"toggle_threads"}]]}
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":caption,"reply_markup":kb})
+
             elif cb_data.startswith("delete|"):
                 _, ch_msg_id = cb_data.split("|")
                 try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":CHANNEL_ID,"message_id":ch_msg_id})
@@ -147,14 +227,16 @@ Quota reset 00:00 WIB."""
         tag = f"@{uname}" if uname else first
 
         if "text" in msg and msg["text"].startswith("/start"):
+            threads_on = is_threads_enabled(chat_id)
             caption = f"""Welcome, {tag}.
 
-X @jogjalendpm is under maintenance, posts will now go to @menfessangel + Threads.
+X @jogjalendpm is under maintenance.
 
 Limit: 5 texts & 5 media/day.
+Threads kamu: {'ON ✅' if threads_on else 'OFF ❌'}
 
 Please send your menfess now."""
-            kb = {"inline_keyboard": [[{"text":"📢 Channel","url":"https://t.me/menfessangel"}],[{"text":"👤 Profile","callback_data":"profil"}]]}
+            kb = {"inline_keyboard": [[{"text":"📢 Channel","url":"https://t.me/menfessangel"}],[{"text":"👤 Profile","callback_data":"profil"},{"text":f"🧵 Threads {'ON' if threads_on else 'OFF'}","callback_data":"toggle_threads"}]]}
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":caption,"reply_markup":kb})
             return "ok",200
 
@@ -167,7 +249,6 @@ Please send your menfess now."""
         is_media = "photo" in msg
         caption = add_hashtag(raw_caption)
 
-        # Cek quota
         if is_media and quotas[key]["media"] >= LIMIT_MEDIA:
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"❌ Media quota habis hari ini!"})
             return "ok",200
@@ -175,7 +256,6 @@ Please send your menfess now."""
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"❌ Text quota habis hari ini!"})
             return "ok",200
 
-        # 1. POST KE TELEGRAM CHANNEL
         if is_media:
             fid = msg["photo"][-1]["file_id"]
             r = SESSION.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={fid}").json()
@@ -189,27 +269,30 @@ Please send your menfess now."""
         cmid = res.json()["result"]["message_id"] if res.ok else "0"
         curl = f"https://t.me/{CHANNEL_USERNAME}/{cmid}"
 
-        # 2. POST KE THREADS (text only, karena threads butuh URL publik buat image)
-        threads_id = post_to_threads(caption)
-        threads_url = f"https://www.threads.net/@menfessangel" if threads_id else ""
+        # CEK SETTING PER USER
+        threads_id = None
+        if is_threads_enabled(chat_id):
+            threads_id = post_to_threads(caption)
 
         if is_media: quotas[key]["media"] += 1
         else: quotas[key]["text"] += 1
         save_quota(quotas)
 
         q = quotas[key]
+        if is_threads_enabled(chat_id):
+            status_msg = "✅ Posted to Telegram + Threads" if threads_id else "⚠️ Telegram OK, Threads gagal"
+        else:
+            status_msg = "✅ Posted to Telegram only (Threads OFF)"
+
         pesan = f"""🏷️ Free daily quota
 📄 Text : {q['text']}/{LIMIT_TEXT}
 📪 Media : {q['media']}/{LIMIT_MEDIA}
-Successfully sent, {tag}!
-
-{'✅ Posted to Threads' if threads_id else '⚠️ Telegram OK, Threads failed (cek token)'}
+{status_msg}, {tag}!
 
 Join Channel : @menfessangel"""
 
         buttons = [[{"text":"➡️ See Telegram","url":curl}]]
         if threads_id:
-            # kalo mau link threads, gak bisa direct post id, pake profile dulu
             buttons.append([{"text":"🧵 See Threads","url":f"https://www.threads.net/@{CHANNEL_USERNAME}"}])
         buttons.append([{"text":"🗑️ Delete Post","callback_data":f"delete|{cmid}"}])
 
