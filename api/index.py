@@ -80,7 +80,7 @@ def handler():
                 return "ok",200
             if cb_data == "info_bot":
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"X @jogja_lend suspend, post hanya ke @menfessangel dulu ya"})
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"X @jogja_lend is under maintenance, posts only to @menfessangel for now."})
                 return "ok",200
             if cb_data.startswith("delete|"):
                 _, ch_msg_id = cb_data.split("|")
@@ -93,9 +93,27 @@ def handler():
         if "message" not in data: return "ok",200
         msg = data["message"]
         chat_id = msg["chat"]["id"]
+
         if "text" in msg and msg["text"].startswith("/start"):
-            txt = "Welcome 🤍 X OFF, hanya ke @menfessangel\nKirim menfess kamu sekarang"
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
+            first = msg["from"].get("first_name") or "Angel"
+            uname = msg["from"].get("username")
+            tag = f"@{uname}" if uname else first
+            caption = f"""Welcome, {tag}.
+
+X @jogja_lend is under maintenance, posts will only go to @menfessangel for now.
+
+Limit: 5 texts & 5 media/day.
+
+Please send your menfess now."""
+            kb = {"inline_keyboard": [[{"text":"📢 Channel","url":"https://t.me/menfessangel"}],[{"text":"👤 Profile","callback_data":"profil"},{"text":"ℹ️ Info","callback_data":"info_bot"}]]}
+            try:
+                if os.path.exists("api/logo.png"):
+                    with open("api/logo.png","rb") as f:
+                        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":chat_id,"caption":caption,"reply_markup":json.dumps(kb)}, files={"photo":f})
+                else:
+                    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":caption,"reply_markup":kb})
+            except:
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":caption,"reply_markup":kb})
             return "ok",200
 
         raw_caption = msg.get("caption") or msg.get("text") or ""
@@ -126,12 +144,11 @@ def handler():
         else: quotas[key]["text"] += 1
         save_quota(quotas)
 
-        username = msg["from"].get("username") or msg["from"].get("first_name") or "Angel"
         q = quotas[key]
         pesan = f"""🏷️Free daily kuota
 📄Text : {q['text']}/{LIMIT_TEXT}
 📪Media : {q['media']}/{LIMIT_MEDIA}
-@{username} berhasil mengirim menfess!
+@{msg['from'].get('username') or msg['from'].get('first_name')} berhasil mengirim menfess!
 
 Join Channel : @menfessangel"""
 
@@ -141,6 +158,6 @@ Join Channel : @menfessangel"""
     except Exception as e:
         print(traceback.format_exc())
         try:
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Error debug: {e}"})
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Error: {e}"})
         except: pass
     return "ok",200
