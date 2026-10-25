@@ -70,18 +70,54 @@ def handler():
             cb_data = cq["data"]
             chat_id = cq["message"]["chat"]["id"]
             msg_id = cq["message"]["message_id"]
+            
             if cb_data == "profil":
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
                 quotas = load_quota()
                 key = get_today_key(chat_id)
                 q = quotas.get(key, {"text":0,"media":0})
-                txt = f"Profile\nID: {chat_id}\nText: {q['text']}/{LIMIT_TEXT}\nMedia: {q['media']}/{LIMIT_MEDIA}\nStatus X: OFF"
+                first = cq["from"].get("first_name") or "Angel"
+                uname = cq["from"].get("username")
+                tag = f"@{uname}" if uname else first
+                txt = f"""👤 Profile - {tag}
+
+🆔 ID: {chat_id}
+🏷️ Daily Quota (WIB)
+
+📄 Text : {q['text']}/{LIMIT_TEXT}
+📪 Media: {q['media']}/{LIMIT_MEDIA}
+
+🔹 Status X (@jogja_lend): OFF - Maintenance
+🔹 Telegram Channel: @menfessangel - ON
+
+Your quota resets every 00:00 WIB."""
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
                 return "ok",200
+
             if cb_data == "info_bot":
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"X @jogja_lend is under maintenance, posts only to @menfessangel for now."})
+                info_txt = """ℹ️ About JogjaLend Bot Angel
+
+Welcome to the anonymous menfess bot for Jogja area!
+
+📢 Channel: @menfessangel
+🐦 X (Twitter): @jogja_lend - Under Maintenance
+
+HOW TO USE:
+Just send your text, photo, or video directly to this bot. It will be posted anonymously to the channel with #jogjalend hashtag.
+
+RULES:
+- No SARA, porn, spam, or personal data
+- Keep it anonymous & respectful
+- Media will get a small watermark
+
+LIMIT:
+5 texts & 5 media per day. Reset at 00:00 WIB.
+
+Enjoy, Angel! 🤍"""
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":info_txt})
                 return "ok",200
+
             if cb_data.startswith("delete|"):
                 _, ch_msg_id = cb_data.split("|")
                 try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":CHANNEL_ID,"message_id":ch_msg_id})
