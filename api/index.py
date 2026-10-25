@@ -87,7 +87,7 @@ def handler():
 📄 Text : {q['text']}/{LIMIT_TEXT}
 📪 Media: {q['media']}/{LIMIT_MEDIA}
 
-🔹 Status X (@jogja_lend): OFF - Maintenance
+🔹 Status X (@jogjalendpm): OFF - Maintenance
 🔹 Telegram Channel: @menfessangel - ON
 
 Your quota resets every 00:00 WIB."""
@@ -107,7 +107,7 @@ HOW TO USE:
 Just send your text, photo, or video directly to this bot. It will be posted anonymously to the channel with #jogjalend hashtag.
 
 RULES:
-- No SARA, spam, or personal data
+- No SARA, porn, spam, or personal data
 - Keep it anonymous & respectful
 - Media will get a small watermark
 
@@ -136,7 +136,7 @@ Enjoy, Angel! 🤍"""
             tag = f"@{uname}" if uname else first
             caption = f"""Welcome, {tag}.
 
-X @jogja_lend is under maintenance, posts will only go to @menfessangel for now.
+X @jogjalendpm is under maintenance, posts will only go to @menfessangel for now.
 
 Limit: 5 texts & 5 media/day.
 
