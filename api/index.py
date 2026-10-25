@@ -41,52 +41,47 @@ def check_limit(chat_id, type_media=False):
     key = get_today_key(chat_id)
     if key not in quotas:
         quotas[key] = {"text": 0, "media": 0}
-    
     limit = LIMIT_MEDIA if type_media else LIMIT_TEXT
     field = "media" if type_media else "text"
-    
     if quotas[key][field] >= limit:
-        return False, quotas
-    
+        return False
     quotas[key][field] += 1
     save_quota(quotas)
-    return True, quotas
+    return True
 
 def send_message(chat_id, text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
+    requests.post(url, json={"chat_id": chat_id, "text": text})
 
 def add_watermark(image_bytes):
     if not PIL_AVAILABLE:
         return image_bytes
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
-        txt_layer = Image.new("RGBA", img.size, (255,255,255,0))
-        draw = ImageDraw.Draw(txt_layer)
+        logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
         
-        watermark_text = "@menfessangel"
-        w, h = img.size
-        
-        # Font size proporsional
-        try:
-            font = ImageFont.truetype("arial.ttf", int(w*0.05))
-        except:
-            font = ImageFont.load_default()
-        
-        # Posisi pojok kanan bawah
-        draw.text((w*0.02, h*0.92), watermark_text, font=font, fill=(255,255,255,180))
-        
-        combined = Image.alpha_composite(img, txt_layer)
+        if os.path.exists(logo_path):
+            logo = Image.open(logo_path).convert("RGBA")
+            w, h = img.size
+            logo_w = int(w * 0.18)
+            logo_h = int(logo_w * logo.size[1] / logo.size[0])
+            logo = logo.resize((logo_w, logo_h))
+            img.paste(logo, (w - logo_w - 15, h - logo_h - 15), logo)
+        else:
+            txt_layer = Image.new("RGBA", img.size, (255,255,255,0))
+            draw = ImageDraw.Draw(txt_layer)
+            draw.text((img.size[0]*0.02, img.size[1]*0.92), "@menfessangel", fill=(255,255,255,180))
+            img = Image.alpha_composite(img, txt_layer)
+
         out = io.BytesIO()
-        combined.convert("RGB").save(out, format="JPEG")
+        img.convert("RGB").save(out, format="JPEG", quality=90)
         return out.getvalue()
-    except Exception as e:
-        print(f"Watermark error: {e}")
+    except:
         return image_bytes
 
 @app.route("/", methods=["GET"])
 def index():
-    return "MenfessAngel Bot Jalan! @menfessangel", 200
+    return "MenfessAngel Bot Jalan!", 200
 
 @app.route("/", methods=["POST"])
 def webhook():
@@ -94,49 +89,33 @@ def webhook():
         data = request.get_json()
         if not data or "message" not in data:
             return "ok", 200
-            
         msg = data["message"]
         chat_id = msg["chat"]["id"]
-        chat_type = msg["chat"]["type"]
-
-        # Hanya proses chat private
-        if chat_type != "private":
+        if msg["chat"]["type"] != "private":
             return "ok", 200
 
-        # Cek ada foto / media
-        is_media = "photo" in msg or "video" in msg or "document" in msg
-        
-        ok, _ = check_limit(chat_id, is_media)
-        if not ok:
-            send_message(chat_id, f"😭 Limit harian kamu habis ({LIMIT_MEDIA if is_media else LIMIT_TEXT}x/hari). Coba lagi besok ya!")
+        is_media = "photo" in msg
+        if not check_limit(chat_id, is_media):
+            send_message(chat_id, "Limit harian habis (3x/hari), coba besok ya!")
             return "ok", 200
 
         caption = msg.get("caption", "") or msg.get("text", "")
-        
-        # Jika ada foto
+
         if "photo" in msg:
             file_id = msg["photo"][-1]["file_id"]
             file_info = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}").json()
             file_path = file_info["result"]["file_path"]
             file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
             file_bytes = requests.get(file_url).content
-            
-            # Kasih watermark
             file_bytes = add_watermark(file_bytes)
-            
-            # Kirim ke channel
             url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
-            files = {"photo": file_bytes}
-            data_send = {"chat_id": CHANNEL_ID, "caption": caption}
-            requests.post(url, files=files, data=data_send)
-        
+            requests.post(url, files={"photo": file_bytes}, data={"chat_id": CHANNEL_ID, "caption": caption})
         elif "text" in msg:
             url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
             requests.post(url, json={"chat_id": CHANNEL_ID, "text": caption})
 
-        send_message(chat_id, "✅ Menfess kamu berhasil dikirim ke @menfessangel")
+        send_message(chat_id, "✅ Menfess terkirim ke @menfessangel")
         return "ok", 200
-
     except Exception as e:
-        print(f"Error: {e}")
+        print(e)
         return "ok", 200
