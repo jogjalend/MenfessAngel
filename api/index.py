@@ -107,7 +107,7 @@ HOW TO USE:
 Just send your text, photo, or video directly to this bot. It will be posted anonymously to the channel with #jogjalend hashtag.
 
 RULES:
-- No SARA, porn, spam, or personal data
+- No SARA, spam, or personal data
 - Keep it anonymous & respectful
 - Media will get a small watermark
 
