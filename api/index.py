@@ -1,4 +1,4 @@
-import os, io, json, requests, traceback
+import os, io, json, requests
 from flask import Flask, request
 from PIL import Image
 from datetime import datetime, timezone, timedelta
@@ -16,6 +16,16 @@ LIMIT_TEXT = 5
 LIMIT_MEDIA = 5
 WIB = timezone(timedelta(hours=7))
 
+# --- PRELOAD LOGO & SESSION (BIAR NGEBUT) ---
+SESSION = requests.Session()
+LOGO_CACHE = None
+for p in ["logo.png","api/logo.png","api/logo.jpg"]:
+    if os.path.exists(p):
+        try:
+            LOGO_CACHE = Image.open(p).convert("RGBA")
+            break
+        except: pass
+
 def load_quota():
     try:
         if os.path.exists(QUOTA_FILE):
@@ -26,37 +36,42 @@ def save_quota(data):
     try:
         with open(QUOTA_FILE, "w") as f: json.dump(data, f)
     except: pass
+
 def get_today_key(chat_id):
-    today = datetime.now(WIB).strftime("%Y-%m-%d")
-    return f"{chat_id}_{today}"
+    return f"{chat_id}_{datetime.now(WIB).strftime('%Y-%m-%d')}"
+
 def add_hashtag(text):
     if not text: return HASHTAG.strip()
     if "#jogjalend" in text.lower(): return text
     return text.strip() + HASHTAG
-def add_watermark(b):
+
+def add_watermark_fast(b):
+    if not LOGO_CACHE:
+        return b
     try:
         base = Image.open(io.BytesIO(b)).convert("RGBA")
-        for p in ["logo.png","api/logo.png"]:
-            if os.path.exists(p):
-                logo = Image.open(p).convert("RGBA")
-                w,h = base.size
-                size = int(w*0.15)
-                logo.thumbnail((size,size), Image.LANCZOS)
-                datas = []
-                for r,g,bl,a in logo.getdata():
-                    if a > 20: datas.append((255,255,255,230))
-                    else: datas.append((255,255,255,0))
-                logo.putdata(datas)
-                base.paste(logo, (w - logo.width - 35, h - logo.height - 55), logo)
-                out = io.BytesIO()
-                base.convert("RGB").save(out, format="JPEG", quality=95)
-                return out.getvalue()
-    except: pass
-    return b
+        w, h = base.size
+        # Resize logo 14% dari lebar, gak pake loop pixel
+        lw = int(w * 0.14)
+        logo = LOGO_CACHE.copy()
+        logo.thumbnail((lw, lw), Image.LANCZOS)
+        # Bikin putih transparan super cepat
+        white_logo = Image.new("RGBA", logo.size, (255,255,255,0))
+        # paste logo sebagai mask biar putih
+        r, g, b_, a = logo.split()
+        white_layer = Image.new("RGBA", logo.size, (255,255,255,210))
+        white_layer.putalpha(a)
+        # tempel
+        base.paste(white_layer, (w - logo.width - 25, h - logo.height - 25), white_layer)
+        out = io.BytesIO()
+        base.convert("RGB").save(out, format="JPEG", quality=90, optimize=True)
+        return out.getvalue()
+    except:
+        return b
 
 @app.route("/", methods=['GET'])
 def home():
-    return "Bot Active - X OFF - TG ON", 200
+    return "Bot Active - FAST MODE", 200
 
 @app.route("/", methods=['POST'])
 @app.route("/api/index.py", methods=['POST'])
@@ -70,93 +85,29 @@ def handler():
             cb_data = cq["data"]
             chat_id = cq["message"]["chat"]["id"]
             msg_id = cq["message"]["message_id"]
-            
+            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
             if cb_data == "profil":
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
                 quotas = load_quota()
-                key = get_today_key(chat_id)
-                q = quotas.get(key, {"text":0,"media":0})
-                first = cq["from"].get("first_name") or "Angel"
-                uname = cq["from"].get("username")
-                tag = f"@{uname}" if uname else first
-                txt = f"""👤 Profile - {tag}
-
-🆔 ID: {chat_id}
-🏷️ Daily Quota (WIB)
-
-📄 Text : {q['text']}/{LIMIT_TEXT}
-📪 Media: {q['media']}/{LIMIT_MEDIA}
-
-🔹 Status X (@jogjalendpm): OFF - Maintenance
-🔹 Telegram Channel: @menfessangel - ON
-
-Your quota resets every 00:00 WIB."""
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
-                return "ok",200
-
-            if cb_data == "info_bot":
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
-                first = cq["from"].get("first_name") or "Angel"
-                uname = cq["from"].get("username")
-                tag = f"@{uname}" if uname else first
-                info_txt = f"""ℹ️ About JogjaLend Bot Angel
-
-Welcome to the anonymous menfess bot for Jogja area!
-
-📢 Channel: @menfessangel
-🐦 X (Twitter): @jogjalendpm - Under Maintenance
-
-HOW TO USE:
-Just send your text, photo, or video directly to this bot. It will be posted anonymously to the channel with #jogjalend hashtag.
-
-RULES:
-- No SARA, spam, or personal data
-- Keep it anonymous & respectful
-- Media will get a small watermark
-- Must include
-@jogjalend in personal rate / rules / profile / channel
-
-LIMIT:
-5 texts & 5 media per day. Reset at 00:00 WIB.
-
-Enjoy, {tag}! 🤍"""
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":info_txt})
-                return "ok",200
-
-            if cb_data.startswith("delete|"):
+                q = quotas.get(get_today_key(chat_id), {"text":0,"media":0})
+                tag = f"@{cq['from'].get('username')}" if cq['from'].get('username') else cq['from'].get('first_name')
+                txt = f"👤 {tag}\nText: {q['text']}/{LIMIT_TEXT}\nMedia: {q['media']}/{LIMIT_MEDIA}"
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
+            elif cb_data.startswith("delete|"):
                 _, ch_msg_id = cb_data.split("|")
-                try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":CHANNEL_ID,"message_id":ch_msg_id})
+                try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":CHANNEL_ID,"message_id":ch_msg_id})
                 except: pass
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"],"text":"Deleted!"})
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":"Post deleted!"})
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":"Deleted!"})
             return "ok",200
 
         if "message" not in data: return "ok",200
         msg = data["message"]
         chat_id = msg["chat"]["id"]
-        
-        # FIX: define tag here for all message handlers
-        first = msg["from"].get("first_name") or "Angel"
-        uname = msg["from"].get("username")
-        tag = f"@{uname}" if uname else first
+        tag = f"@{msg['from'].get('username')}" if msg['from'].get('username') else msg['from'].get('first_name') or "Angel"
 
         if "text" in msg and msg["text"].startswith("/start"):
-            caption = f"""Welcome, {tag}.
-
-X @jogjalendpm is under maintenance, posts will only go to @menfessangel for now.
-
-Limit: 5 texts & 5 media/day.
-
-Please send your menfess now."""
-            kb = {"inline_keyboard": [[{"text":"📢 Channel","url":"https://t.me/menfessangel"}],[{"text":"👤 Profile","callback_data":"profil"},{"text":"ℹ️ Info","callback_data":"info_bot"}]]}
-            try:
-                if os.path.exists("api/logo.png"):
-                    with open("api/logo.png","rb") as f:
-                        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":chat_id,"caption":caption,"reply_markup":json.dumps(kb)}, files={"photo":f})
-                else:
-                    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":caption,"reply_markup":kb})
-            except:
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":caption,"reply_markup":kb})
+            caption = f"Welcome, {tag}.\nLimit: 5 texts & 5 media/day.\nSend menfess now."
+            kb = {"inline_keyboard": [[{"text":"📢 Channel","url":"https://t.me/menfessangel"}],[{"text":"👤 Profile","callback_data":"profil"}]]}
+            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":caption,"reply_markup":kb})
             return "ok",200
 
         raw_caption = msg.get("caption") or msg.get("text") or ""
@@ -167,18 +118,16 @@ Please send your menfess now."""
         if key not in quotas: quotas[key] = {"text":0,"media":0}
         is_media = "photo" in msg
         caption = add_hashtag(raw_caption)
-        fb = None
+
         if is_media:
             fid = msg["photo"][-1]["file_id"]
-            r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={fid}").json()
+            r = SESSION.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={fid}").json()
             fp = r["result"]["file_path"]
-            fb = requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}").content
-            fb = add_watermark(fb)
-
-        if fb:
-            res = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":CHANNEL_ID,"caption":caption}, files={"photo":fb})
+            fb = SESSION.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}").content
+            fb = add_watermark_fast(fb)
+            res = SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":CHANNEL_ID,"caption":caption}, files={"photo":fb})
         else:
-            res = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":CHANNEL_ID,"text":caption})
+            res = SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":CHANNEL_ID,"text":caption})
         
         cmid = res.json()["result"]["message_id"] if res.ok else "0"
         curl = f"https://t.me/{CHANNEL_USERNAME}/{cmid}"
@@ -188,19 +137,10 @@ Please send your menfess now."""
         save_quota(quotas)
 
         q = quotas[key]
-        pesan = f"""🏷️ Free daily quota
-📄 Text : {q['text']}/{LIMIT_TEXT}
-📪 Media : {q['media']}/{LIMIT_MEDIA}
-Successfully sent, {tag}!
-
-Join Channel : @menfessangel"""
-
-        kb = {"inline_keyboard": [[{"text":"➡️ See Message","url":curl}], [{"text":"🗑️ Delete Post","callback_data":f"delete|{cmid}"}]]}
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":pesan,"reply_markup":kb})
+        pesan = f"Sent! {tag}\nText:{q['text']}/{LIMIT_TEXT} Media:{q['media']}/{LIMIT_MEDIA}"
+        kb = {"inline_keyboard": [[{"text":"➡️ See Message","url":curl}], [{"text":"🗑️ Delete","callback_data":f"delete|{cmid}"}]]}
+        SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":pesan,"reply_markup":kb})
 
     except Exception as e:
-        print(traceback.format_exc())
-        try:
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Error: {e}"})
-        except: pass
+        print(e)
     return "ok",200
