@@ -96,7 +96,10 @@ Your quota resets every 00:00 WIB."""
 
             if cb_data == "info_bot":
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
-                info_txt = """ℹ️ About JogjaLend Bot Angel
+                first = cq["from"].get("first_name") or "Angel"
+                uname = cq["from"].get("username")
+                tag = f"@{uname}" if uname else first
+                info_txt = f"""ℹ️ About JogjaLend Bot Angel
 
 Welcome to the anonymous menfess bot for Jogja area!
 
@@ -110,11 +113,13 @@ RULES:
 - No SARA, spam, or personal data
 - Keep it anonymous & respectful
 - Media will get a small watermark
+- Must include
+@jogjalend in personal rate / rules / profile / channel
 
 LIMIT:
 5 texts & 5 media per day. Reset at 00:00 WIB.
 
-Enjoy, Angel! 🤍"""
+Enjoy, {tag}! 🤍"""
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":info_txt})
                 return "ok",200
 
@@ -181,10 +186,10 @@ Please send your menfess now."""
         save_quota(quotas)
 
         q = quotas[key]
-        pesan = f"""🏷️Free daily kuota
-📄Text : {q['text']}/{LIMIT_TEXT}
-📪Media : {q['media']}/{LIMIT_MEDIA}
-@{msg['from'].get('username') or msg['from'].get('first_name')} berhasil mengirim menfess!
+        pesan = f"""🏷️ Free daily quota
+📄 Text : {q['text']}/{LIMIT_TEXT}
+📪 Media : {q['media']}/{LIMIT_MEDIA}
+Successfully sent, {tag}!
 
 Join Channel : @menfessangel"""
 
