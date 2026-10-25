@@ -56,7 +56,7 @@ def add_watermark(b):
 
 @app.route("/", methods=['GET'])
 def home():
-    return "Bot Active - X OFF (Suspended) - TG ON", 200
+    return "Bot Active - X OFF - TG ON", 200
 
 @app.route("/", methods=['POST'])
 @app.route("/api/index.py", methods=['POST'])
@@ -64,6 +64,7 @@ def handler():
     try:
         data = request.get_json()
         if not data: return "ok",200
+        
         if "callback_query" in data:
             cq = data["callback_query"]
             cb_data = cq["data"]
@@ -79,8 +80,7 @@ def handler():
                 return "ok",200
             if cb_data == "info_bot":
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
-                info_txt = "X @jogja_lend suspend, post hanya ke @menfessangel dulu ya"
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":info_txt})
+                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"X @jogja_lend suspend, post hanya ke @menfessangel dulu ya"})
                 return "ok",200
             if cb_data.startswith("delete|"):
                 _, ch_msg_id = cb_data.split("|")
@@ -96,3 +96,51 @@ def handler():
         if "text" in msg and msg["text"].startswith("/start"):
             txt = "Welcome 🤍 X OFF, hanya ke @menfessangel\nKirim menfess kamu sekarang"
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
+            return "ok",200
+
+        raw_caption = msg.get("caption") or msg.get("text") or ""
+        if not raw_caption and "photo" not in msg: return "ok",200
+        
+        quotas = load_quota()
+        key = get_today_key(chat_id)
+        if key not in quotas: quotas[key] = {"text":0,"media":0}
+        is_media = "photo" in msg
+        caption = add_hashtag(raw_caption)
+        fb = None
+        if is_media:
+            fid = msg["photo"][-1]["file_id"]
+            r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={fid}").json()
+            fp = r["result"]["file_path"]
+            fb = requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}").content
+            fb = add_watermark(fb)
+
+        if fb:
+            res = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":CHANNEL_ID,"caption":caption}, files={"photo":fb})
+        else:
+            res = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":CHANNEL_ID,"text":caption})
+        
+        cmid = res.json()["result"]["message_id"] if res.ok else "0"
+        curl = f"https://t.me/{CHANNEL_USERNAME}/{cmid}"
+
+        if is_media: quotas[key]["media"] += 1
+        else: quotas[key]["text"] += 1
+        save_quota(quotas)
+
+        username = msg["from"].get("username") or msg["from"].get("first_name") or "Angel"
+        q = quotas[key]
+        pesan = f"""🏷️Free daily kuota
+📄Text : {q['text']}/{LIMIT_TEXT}
+📪Media : {q['media']}/{LIMIT_MEDIA}
+@{username} berhasil mengirim menfess!
+
+Join Channel : @menfessangel"""
+
+        kb = {"inline_keyboard": [[{"text":"➡️ See Message","url":curl}], [{"text":"🗑️ Delete Post","callback_data":f"delete|{cmid}"}]]}
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":pesan,"reply_markup":kb})
+
+    except Exception as e:
+        print(traceback.format_exc())
+        try:
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Error debug: {e}"})
+        except: pass
+    return "ok",200
