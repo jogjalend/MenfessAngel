@@ -50,7 +50,7 @@ def save_settings(data):
     except: pass
 def is_threads_enabled(chat_id):
     settings = load_settings()
-    return settings.get(str(chat_id), {}).get("threads", False) # DEFAULT OFF
+    return settings.get(str(chat_id), {}).get("threads", False)
 def set_threads_enabled(chat_id, enabled):
     settings = load_settings()
     if str(chat_id) not in settings: settings[str(chat_id)] = {}
@@ -79,17 +79,33 @@ def add_watermark_fast(b):
         return out.getvalue()
     except:
         return b
+
+# FIX THREADS - Polling status biar gak Content not available
 def post_to_threads(text):
     if not THREADS_TOKEN or not THREADS_USER_ID: return None
+    if len(text) > 500: text = text[:497] + "..."
     try:
         url_create = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads"
         r1 = SESSION.post(url_create, data={"media_type": "TEXT","text": text,"access_token": THREADS_TOKEN}, timeout=15)
+        print(f"THREADS CREATE: {r1.text}")
         if not r1.ok: return None
         creation_id = r1.json().get("id")
         if not creation_id: return None
-        time.sleep(3)
+        
+        # Polling wajib
+        url_status = f"https://graph.threads.net/v1.0/{creation_id}"
+        for i in range(6):
+            time.sleep(5)
+            rs = SESSION.get(url_status, params={"fields":"status,error_message","access_token":THREADS_TOKEN}, timeout=15)
+            print(f"THREADS STATUS {i}: {rs.text}")
+            if rs.ok:
+                st = rs.json().get("status")
+                if st == "FINISHED": break
+                if st in ["ERROR","EXPIRED"]: return None
+
         url_pub = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish"
         r2 = SESSION.post(url_pub, data={"creation_id": creation_id,"access_token": THREADS_TOKEN}, timeout=15)
+        print(f"THREADS PUBLISH: {r2.text}")
         if r2.ok: return r2.json().get("id")
         return None
     except Exception as e:
@@ -98,7 +114,7 @@ def post_to_threads(text):
 
 @app.route("/", methods=['GET'])
 def home():
-    return "Bot Active - OFF by default", 200
+    return "Bot Active", 200
 
 @app.route("/", methods=['POST'])
 @app.route("/api/index.py", methods=['POST'])
@@ -125,14 +141,14 @@ def handler():
 
 🆔 ID: {chat_id}
 🏷️ Daily Quota (WIB)
-
 📄 Text : {q['text']}/{LIMIT_TEXT}
 📪 Media: {q['media']}/{LIMIT_MEDIA}
 
 🔹 Telegram: @menfessangel - ON
 🔹 Threads: {'ON ✅' if threads_on else 'OFF ❌ (Default)'}
 
-{'Your posts will be shared to Threads' if threads_on else 'Your posts will NOT be shared to Threads. Click ON to enable.'}
+⚠️ Note:
+Threads is sensitive. Please avoid vulgar / explicit language to prevent takedown.
 
 Quota reset 00:00 WIB."""
                 toggle_text = "🧵 Threads: ON ✅" if threads_on else "🧵 Threads: OFF ❌"
@@ -151,17 +167,15 @@ Quota reset 00:00 WIB."""
                 txt = f"""👤 Profile - {tag}
 
 🆔 ID: {chat_id}
-🏷️ Daily Quota (WIB)
-
+🏷️ Daily Quota
 📄 Text : {q['text']}/{LIMIT_TEXT}
 📪 Media: {q['media']}/{LIMIT_MEDIA}
 
-🔹 Telegram: @menfessangel - ON
 🔹 Threads: {'ON ✅' if new_val else 'OFF ❌'}
 
-{'Enabled! Your next menfess will be posted to Threads.' if new_val else 'Disabled. Your posts will only go to Telegram.'}
+⚠️ Threads is quite sensitive, please use non-vulgar language.
 
-Quota reset 00:00 WIB."""
+{'Enabled! Your next menfess will be posted to Threads.' if new_val else 'Disabled. Your posts will only go to Telegram.'}"""
                 toggle_text = "🧵 Threads: ON ✅" if new_val else "🧵 Threads: OFF ❌"
                 kb = {"inline_keyboard": [[{"text":toggle_text, "callback_data":"toggle_threads"}],[{"text":"🔙 Back","callback_data":"back_start"}]]}
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":kb})
@@ -178,6 +192,8 @@ Your menfess will be posted to @{CHANNEL_USERNAME}.
 If you want your menfess to also be shared to Threads, you must activate it by clicking the ON button below.
 
 Current: {'ON ✅' if threads_on else 'OFF ❌ (Default)'}
+
+⚠️ Note: Threads is sensitive, please avoid vulgar/explicit language.
 
 Limit: 5 texts & 5 media/day."""
                 kb = {"inline_keyboard": [[{"text":"📢 Channel","url":"https://t.me/menfessangel"}],[{"text":"👤 Profile","callback_data":"profil"},{"text":f"🧵 {'ON ✅' if threads_on else 'OFF ❌'}","callback_data":"toggle_threads"}]]}
@@ -208,6 +224,8 @@ If you want your menfess to also be shared to Threads, you must activate it by c
 
 Current Status: {'ON ✅ - Will be shared to Threads' if threads_on else 'OFF ❌ - Telegram only (Default)'}
 
+⚠️ Important: Threads is quite sensitive, please use non-vulgar language.
+
 Limit: 5 texts & 5 media/day. Quota resets at 00:00 WIB.
 
 Please send your menfess now."""
@@ -237,7 +255,8 @@ Please send your menfess now."""
             fp = r["result"]["file_path"]
             fb = SESSION.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}").content
             fb = add_watermark_fast(fb)
-            res = SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":CHANNEL_ID,"caption":caption}, files={"photo":fb})
+            files = {"photo": ("menfess.jpg", fb, "image/jpeg")} # FIX FOTO
+            res = SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":CHANNEL_ID,"caption":caption}, files=files, timeout=30)
         else:
             res = SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":CHANNEL_ID,"text":caption})
         
@@ -254,7 +273,7 @@ Please send your menfess now."""
         q = quotas[key]
 
         if is_threads_enabled(chat_id):
-            status_msg = "✅ Posted to Telegram + Threads" if threads_id else "⚠️ Telegram OK, Threads failed"
+            status_msg = "✅ Posted to Telegram + Threads" if threads_id else "⚠️ Telegram OK, Threads failed (maybe vulgar content)"
         else:
             status_msg = "✅ Posted to Telegram only (Threads OFF)"
 
