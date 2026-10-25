@@ -151,4 +151,12 @@ Silakan kirim menfess kamu sekarang. Support: @Jogja_Lend"""
         else: quotas[key]["text"] += 1
         save_quota(quotas)
 
-        pesan = f"✅ Menf
+        pesan = f"✅ Menfess Berhasil Terkirim!\n\nMakasih ya angel, menfess kamu udah tayang di Channel 💌\n\n⚠️ X lagi maintenance, jadi cuma tayang di Channel dulu ya.\n\n📊 Sisa kuota:\nText: {LIMIT_TEXT - quotas[key]['text']}/{LIMIT_TEXT} | Media: {LIMIT_MEDIA - quotas[key]['media']}/{LIMIT_MEDIA}\n\n@Jogja_Lend"
+        kb = {"inline_keyboard": [[{"text":"📢 Lihat di Channel","url":curl}], [{"text":"🗑️ Hapus Post","callback_data":f"delete|{cmid}"}]]}
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":pesan,"reply_markup":kb})
+
+    except Exception as e:
+        print(traceback.format_exc())
+        try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Error: {e}"})
+        except: pass
+    return "ok",200
