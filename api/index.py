@@ -134,11 +134,13 @@ Enjoy, {tag}! 🤍"""
         if "message" not in data: return "ok",200
         msg = data["message"]
         chat_id = msg["chat"]["id"]
+        
+        # FIX: define tag here for all message handlers
+        first = msg["from"].get("first_name") or "Angel"
+        uname = msg["from"].get("username")
+        tag = f"@{uname}" if uname else first
 
         if "text" in msg and msg["text"].startswith("/start"):
-            first = msg["from"].get("first_name") or "Angel"
-            uname = msg["from"].get("username")
-            tag = f"@{uname}" if uname else first
             caption = f"""Welcome, {tag}.
 
 X @jogjalendpm is under maintenance, posts will only go to @menfessangel for now.
