@@ -101,13 +101,13 @@ Your quota resets every 00:00 WIB."""
 Welcome to the anonymous menfess bot for Jogja area!
 
 📢 Channel: @menfessangel
-🐦 X (Twitter): @jogja_lend - Under Maintenance
+🐦 X (Twitter): @jogjalendpm - Under Maintenance
 
 HOW TO USE:
 Just send your text, photo, or video directly to this bot. It will be posted anonymously to the channel with #jogjalend hashtag.
 
 RULES:
-- No SARA, porn, spam, or personal data
+- No SARA, spam, or personal data
 - Keep it anonymous & respectful
 - Media will get a small watermark
 
