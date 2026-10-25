@@ -8,7 +8,6 @@ app = Flask(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID") or "@menfessangel"
 CHANNEL_USERNAME = "menfessangel"
-ADMIN_ID = int(os.getenv("ADMIN_ID") or "8584319568")
 
 HASHTAG = "\n\n#jogjalend"
 QUOTA_FILE = "/tmp/quota.json"
@@ -16,10 +15,10 @@ LIMIT_TEXT = 5
 LIMIT_MEDIA = 5
 WIB = timezone(timedelta(hours=7))
 
-# --- PRELOAD LOGO & SESSION (BIAR NGEBUT) ---
+# --- SPEED BOOST ---
 SESSION = requests.Session()
 LOGO_CACHE = None
-for p in ["logo.png","api/logo.png","api/logo.jpg"]:
+for p in ["logo.png","api/logo.png"]:
     if os.path.exists(p):
         try:
             LOGO_CACHE = Image.open(p).convert("RGBA")
@@ -36,42 +35,35 @@ def save_quota(data):
     try:
         with open(QUOTA_FILE, "w") as f: json.dump(data, f)
     except: pass
-
 def get_today_key(chat_id):
     return f"{chat_id}_{datetime.now(WIB).strftime('%Y-%m-%d')}"
-
 def add_hashtag(text):
     if not text: return HASHTAG.strip()
     if "#jogjalend" in text.lower(): return text
     return text.strip() + HASHTAG
 
 def add_watermark_fast(b):
-    if not LOGO_CACHE:
-        return b
+    if not LOGO_CACHE: return b
     try:
         base = Image.open(io.BytesIO(b)).convert("RGBA")
-        w, h = base.size
-        # Resize logo 14% dari lebar, gak pake loop pixel
-        lw = int(w * 0.14)
+        w,h = base.size
+        lw = int(w*0.15)
         logo = LOGO_CACHE.copy()
-        logo.thumbnail((lw, lw), Image.LANCZOS)
-        # Bikin putih transparan super cepat
-        white_logo = Image.new("RGBA", logo.size, (255,255,255,0))
-        # paste logo sebagai mask biar putih
-        r, g, b_, a = logo.split()
-        white_layer = Image.new("RGBA", logo.size, (255,255,255,210))
-        white_layer.putalpha(a)
-        # tempel
-        base.paste(white_layer, (w - logo.width - 25, h - logo.height - 25), white_layer)
+        logo.thumbnail((lw,lw), Image.LANCZOS)
+        # bikin jadi putih transparan tanpa loop pixel
+        alpha = logo.split()[-1]
+        white = Image.new("RGBA", logo.size, (255,255,255,200))
+        white.putalpha(alpha)
+        base.paste(white, (w-logo.width-35, h-logo.height-55), white)
         out = io.BytesIO()
-        base.convert("RGB").save(out, format="JPEG", quality=90, optimize=True)
+        base.convert("RGB").save(out, format="JPEG", quality=92, optimize=True)
         return out.getvalue()
     except:
         return b
 
 @app.route("/", methods=['GET'])
 def home():
-    return "Bot Active - FAST MODE", 200
+    return "Bot Active - FAST & PRETTY", 200
 
 @app.route("/", methods=['POST'])
 @app.route("/api/index.py", methods=['POST'])
@@ -84,29 +76,48 @@ def handler():
             cq = data["callback_query"]
             cb_data = cq["data"]
             chat_id = cq["message"]["chat"]["id"]
-            msg_id = cq["message"]["message_id"]
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
             if cb_data == "profil":
                 quotas = load_quota()
-                q = quotas.get(get_today_key(chat_id), {"text":0,"media":0})
-                tag = f"@{cq['from'].get('username')}" if cq['from'].get('username') else cq['from'].get('first_name')
-                txt = f"👤 {tag}\nText: {q['text']}/{LIMIT_TEXT}\nMedia: {q['media']}/{LIMIT_MEDIA}"
+                key = get_today_key(chat_id)
+                q = quotas.get(key, {"text":0,"media":0})
+                uname = cq["from"].get("username")
+                tag = f"@{uname}" if uname else cq["from"].get("first_name")
+                txt = f"""👤 Profile - {tag}
+
+🆔 ID: {chat_id}
+🏷️ Daily Quota (WIB)
+
+📄 Text : {q['text']}/{LIMIT_TEXT}
+📪 Media: {q['media']}/{LIMIT_MEDIA}
+
+🔹 Telegram Channel: @menfessangel - ON
+
+Quota reset 00:00 WIB."""
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt})
             elif cb_data.startswith("delete|"):
                 _, ch_msg_id = cb_data.split("|")
                 try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":CHANNEL_ID,"message_id":ch_msg_id})
                 except: pass
-                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":"Deleted!"})
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":cq["message"]["chat"]["id"],"message_id":cq["message"]["message_id"],"text":"Post deleted! 🗑️"})
             return "ok",200
 
         if "message" not in data: return "ok",200
         msg = data["message"]
         chat_id = msg["chat"]["id"]
-        tag = f"@{msg['from'].get('username')}" if msg['from'].get('username') else msg['from'].get('first_name') or "Angel"
+        first = msg["from"].get("first_name") or "Angel"
+        uname = msg["from"].get("username")
+        tag = f"@{uname}" if uname else first
 
         if "text" in msg and msg["text"].startswith("/start"):
-            caption = f"Welcome, {tag}.\nLimit: 5 texts & 5 media/day.\nSend menfess now."
-            kb = {"inline_keyboard": [[{"text":"📢 Channel","url":"https://t.me/menfessangel"}],[{"text":"👤 Profile","callback_data":"profil"}]]}
+            caption = f"""Welcome, {tag}.
+
+X @jogjalendpm is under maintenance, posts will only go to @menfessangel for now.
+
+Limit: 5 texts & 5 media/day.
+
+Please send your menfess now."""
+            kb = {"inline_keyboard": [[{"text":"📢 Channel","url":"https://t.me/menfessangel"}],[{"text":"👤 Profile","callback_data":"profil"},{"text":"ℹ️ Info","callback_data":"info_bot"}]]}
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":caption,"reply_markup":kb})
             return "ok",200
 
@@ -137,8 +148,15 @@ def handler():
         save_quota(quotas)
 
         q = quotas[key]
-        pesan = f"Sent! {tag}\nText:{q['text']}/{LIMIT_TEXT} Media:{q['media']}/{LIMIT_MEDIA}"
-        kb = {"inline_keyboard": [[{"text":"➡️ See Message","url":curl}], [{"text":"🗑️ Delete","callback_data":f"delete|{cmid}"}]]}
+        # INI YANG CAKEP BALIK LAGI
+        pesan = f"""🏷️ Free daily quota
+📄 Text : {q['text']}/{LIMIT_TEXT}
+📪 Media : {q['media']}/{LIMIT_MEDIA}
+Successfully sent, {tag}!
+
+Join Channel : @menfessangel"""
+
+        kb = {"inline_keyboard": [[{"text":"➡️ See Message","url":curl}], [{"text":"🗑️ Delete Post","callback_data":f"delete|{cmid}"}]]}
         SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":pesan,"reply_markup":kb})
 
     except Exception as e:
