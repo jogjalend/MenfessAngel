@@ -114,11 +114,12 @@ def get_main_menu():
         [{"text":"👤 Profile","callback_data":"profil"}, {"text":"🧵 Threads","callback_data":"menu_threads"}],
         [{"text":"📊 Stats","callback_data":"menu_stats"}],
         [{"text":"📜 Rules","callback_data":"menu_rules"}, {"text":"ℹ️ Help","callback_data":"menu_help"}],
-        [{"text":"📢 Channel","url":"https://t.me/menfessangel"}]
+        [{"text":"📢 Channel","url":"https://t.me/menfessangel"}],
+        [{"text":"🔙 Back","callback_data":"back_to_start"}]
     ]}
 
 @app.route("/", methods=['GET'])
-def home(): return "Bot Active - English Formal",200
+def home(): return "Bot Active - English Formal + Back Button",200
 
 @app.route("/", methods=['POST'])
 @app.route("/api/index.py", methods=['POST'])
@@ -137,6 +138,20 @@ def handler():
             if cb_data == "menu_main":
                 tag = f"@{cq['from'].get('username')}" if cq["from"].get("username") else cq["from"].get("first_name")
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":f"📋 MAIN MENU\n\nWelcome, {tag}!\nPlease select an option below:","reply_markup":get_main_menu()})
+                return "ok",200
+
+            elif cb_data == "back_to_start":
+                tag = f"@{cq['from'].get('username')}" if cq["from"].get("username") else cq["from"].get("first_name")
+                on = is_threads_enabled(chat_id)
+                caption = f"""🚀 Welcome, {tag}!
+
+Your submission will be posted to @{CHANNEL_USERNAME}
+Threads: {'ON ✅' if on else 'OFF ❌ (Default: Telegram only)'}
+
+⚠️ Please maintain compliance for Threads.
+
+Daily Limit: 5 texts & 5 media. Reset at 00:00 WIB."""
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":caption,"reply_markup":get_start_menu()})
                 return "ok",200
 
             elif cb_data in ["menu_post","menu_stats","menu_rules","menu_help"]:
@@ -165,14 +180,6 @@ def handler():
 ⚠️ Please avoid vulgar content for Threads compliance"""
                 kb = {"inline_keyboard": [[{"text": f"🧵 Threads: {'ON ✅' if on else 'OFF ❌'}","callback_data":"toggle_threads"}],[{"text":"🔙 Back to Menu","callback_data":"menu_main"}]]}
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":kb})
-                return "ok",200
-
-            elif cb_data == "back_start":
-                tag = f"@{cq['from'].get('username')}" if cq["from"].get("username") else cq["from"].get("first_name")
-                on = is_threads_enabled(chat_id)
-                caption = f"Welcome, {tag}.\nYour post will be published to @{CHANNEL_USERNAME}\nThreads: {'ON ✅' if on else 'OFF ❌'}"
-                kb = {"inline_keyboard": [[{"text":"📢 Channel","url":"https://t.me/menfessangel"}],[{"text":"👤 Profile","callback_data":"profil"},{"text":f"🧵 {'ON ✅' if on else 'OFF ❌'}","callback_data":"toggle_threads"}]]}
-                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":caption,"reply_markup":kb})
                 return "ok",200
 
             elif cb_data.startswith("delete|"):
