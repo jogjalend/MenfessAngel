@@ -81,7 +81,6 @@ def post_to_threads(text):
     if not THREADS_TOKEN or not THREADS_USER_ID: return None
     if len(text) > 500: text = text[:497] + "..."
     try:
-        # auto censor buat threads
         check = any(w in text.lower() for w in BAD_WORDS)
         if check:
             text = censor_text(text)
@@ -109,9 +108,9 @@ def get_main_menu():
     return {"inline_keyboard": [
         [{"text":"📝 Post Menfess","callback_data":"menu_post"}],
         [{"text":"👤 Profile","callback_data":"profil"}, {"text":"🧵 Threads","callback_data":"menu_threads"}],
-        [{"text":"📊 Stats","callback_data":"menu_stats"}, {"text":"🔥 Top","callback_data":"menu_top"}],
+        [{"text":"📊 Stats","callback_data":"menu_stats"}],
         [{"text":"📜 Rules","callback_data":"menu_rules"}, {"text":"ℹ️ Help","callback_data":"menu_help"}],
-        [{"text":"⭐ Premium","callback_data":"menu_premium"}, {"text":"📢 Channel","url":"https://t.me/menfessangel"}]
+        [{"text":"📢 Channel","url":"https://t.me/menfessangel"}]
     ]}
 
 @app.route("/", methods=['GET'])
@@ -136,14 +135,12 @@ def handler():
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":f"🚀 MENFESS ANGEL - PRO\n\nWelcome {tag}! Select menu:","reply_markup":get_main_menu()})
                 return "ok",200
 
-            elif cb_data in ["menu_post","menu_stats","menu_top","menu_rules","menu_help","menu_premium"]:
+            elif cb_data in ["menu_post","menu_stats","menu_rules","menu_help"]:
                 texts = {
-                    "menu_post": "📝 POST MENFESS\n\nKirim text/foto langsung ke bot.\nLimit 5 text & 5 media/hari.\nAuto hashtag #jogjalend\n\n⚠️ Threads sensitif, hindari kata vulgar - auto sensor ***",
+                    "menu_post": "📝 POST MENFESS\n\nKirim text/foto langsung ke bot.\nLimit 5 text & 5 media/hari.\nAuto hashtag #jogjalend",
                     "menu_stats": f"📊 STATS\n\nYour quota today: {load_quota().get(get_today_key(chat_id), {'text':0,'media':0})}",
-                    "menu_top": f"🔥 TOP MENFESS\n\nVote dengan ❤️ di @{CHANNEL_USERNAME}",
-                    "menu_rules": "📜 RULES\n1. No SARA/porn/hate\n2. No data pribadi\n3. No spam\n\n⚠️ Threads sensitif - vulgar auto sensor ***\nPelanggaran = ban",
-                    "menu_help": "ℹ️ HELP\n/start = menu\nKirim menfess langsung\nThreads default OFF, klik ON untuk share ke Threads",
-                    "menu_premium": "⭐ PREMIUM\nFree: 5+5/day\nPremium 25k: Unlimited, No WM, Priority\nHubungi @admin"
+                    "menu_rules": "📜 COMMUNITY GUIDELINES\n\n1. No Spam & Scam Links\n2. No SARA & Hate Speech\n3. No Doxxing & Personal Data\n4. Stay Professional\n\nViolation = Permanent Ban",
+                    "menu_help": "ℹ️ HELP\n/start = menu\nKirim menfess langsung\nThreads default OFF, klik ON untuk share ke Threads"
                 }
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":texts[cb_data],"reply_markup":{"inline_keyboard":[[{"text":"🔙 Back","callback_data":"menu_main"}]]}})
                 return "ok",200
