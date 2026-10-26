@@ -85,24 +85,28 @@ def post_to_threads(text):
         if check:
             text = censor_text(text)
         r1 = SESSION.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads", data={"media_type":"TEXT","text":text,"access_token":THREADS_TOKEN}, timeout=15)
-        print(f"CREATE: {r1.text}")
         if not r1.ok: return None
         cid = r1.json().get("id")
         if not cid: return None
         for i in range(6):
             time.sleep(5)
             rs = SESSION.get(f"https://graph.threads.net/v1.0/{cid}", params={"fields":"status,error_message","access_token":THREADS_TOKEN}, timeout=15)
-            print(f"STATUS {i}: {rs.text}")
             if rs.ok:
                 st = rs.json().get("status")
                 if st == "FINISHED": break
                 if st in ["ERROR","EXPIRED"]: return None
         r2 = SESSION.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish", data={"creation_id":cid,"access_token":THREADS_TOKEN}, timeout=15)
-        print(f"PUBLISH: {r2.text}")
         if r2.ok: return r2.json().get("id")
         return None
     except Exception as e:
         print(e); return None
+
+def get_start_menu():
+    return {"inline_keyboard": [
+        [{"text":"📋 Menu","callback_data":"menu_main"}],
+        [{"text":"👤 Profile","callback_data":"profil"}, {"text":"🧵 Threads","callback_data":"menu_threads"}],
+        [{"text":"📜 Rules","callback_data":"menu_rules"}]
+    ]}
 
 def get_main_menu():
     return {"inline_keyboard": [
@@ -114,7 +118,7 @@ def get_main_menu():
     ]}
 
 @app.route("/", methods=['GET'])
-def home(): return "Bot Active - PRO Menu No Bug",200
+def home(): return "Bot Active - English Formal",200
 
 @app.route("/", methods=['POST'])
 @app.route("/api/index.py", methods=['POST'])
@@ -132,15 +136,15 @@ def handler():
 
             if cb_data == "menu_main":
                 tag = f"@{cq['from'].get('username')}" if cq["from"].get("username") else cq["from"].get("first_name")
-                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":f"🚀 MENFESS ANGEL - PRO\n\nWelcome {tag}! Select menu:","reply_markup":get_main_menu()})
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":f"📋 MAIN MENU\n\nWelcome, {tag}!\nPlease select an option below:","reply_markup":get_main_menu()})
                 return "ok",200
 
             elif cb_data in ["menu_post","menu_stats","menu_rules","menu_help"]:
                 texts = {
-                    "menu_post": "📝 POST MENFESS\n\nKirim text/foto langsung ke bot.\nLimit 5 text & 5 media/hari.\nAuto hashtag #jogjalend",
-                    "menu_stats": f"📊 STATS\n\nYour quota today: {load_quota().get(get_today_key(chat_id), {'text':0,'media':0})}",
+                    "menu_post": "📝 POST MENFESS\n\nSend text or photo directly to this bot.\nDaily limit: 5 texts & 5 media.\nHashtag #jogjalend will be added automatically.",
+                    "menu_stats": f"📊 STATISTICS\n\nYour usage today: {load_quota().get(get_today_key(chat_id), {'text':0,'media':0})}\nLimit: {LIMIT_TEXT} Text & {LIMIT_MEDIA} Media",
                     "menu_rules": "📜 COMMUNITY GUIDELINES\n\n1. No Spam & Scam Links\n2. No SARA & Hate Speech\n3. No Doxxing & Personal Data\n4. Stay Professional\n\nViolation = Permanent Ban",
-                    "menu_help": "ℹ️ HELP\n/start = menu\nKirim menfess langsung\nThreads default OFF, klik ON untuk share ke Threads"
+                    "menu_help": "ℹ️ HELP CENTER\n\n/start - Show main menu\nSimply send your menfess (text/photo) to post\nThreads is OFF by default. Enable it via Profile to cross-post"
                 }
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":texts[cb_data],"reply_markup":{"inline_keyboard":[[{"text":"🔙 Back","callback_data":"menu_main"}]]}})
                 return "ok",200
@@ -152,21 +156,21 @@ def handler():
                 q = quotas.get(get_today_key(chat_id), {"text":0,"media":0})
                 on = is_threads_enabled(chat_id)
                 tag = f"@{cq['from'].get('username')}" if cq["from"].get("username") else cq["from"].get("first_name")
-                txt = f"""👤 Profile - {tag}
+                txt = f"""👤 PROFILE - {tag}
 🆔 ID: {chat_id}
 📄 Text: {q['text']}/{LIMIT_TEXT}
-📪 Media: {q['media']}/{LIMIT_MEDIA}
+📦 Media: {q['media']}/{LIMIT_MEDIA}
 🔹 Telegram: ON
-🔹 Threads: {'ON ✅' if on else 'OFF ❌ (Default)'}
-⚠️ Threads sensitif, hindari vulgar"""
-                kb = {"inline_keyboard": [[{"text": f"🧵 Threads: {'ON ✅' if on else 'OFF ❌'}","callback_data":"toggle_threads"}],[{"text":"🔙 Menu","callback_data":"menu_main"}]]}
+🔹 Threads: {'ON ✅' if on else 'OFF ❌'}
+⚠️ Please avoid vulgar content for Threads compliance"""
+                kb = {"inline_keyboard": [[{"text": f"🧵 Threads: {'ON ✅' if on else 'OFF ❌'}","callback_data":"toggle_threads"}],[{"text":"🔙 Back to Menu","callback_data":"menu_main"}]]}
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":kb})
                 return "ok",200
 
             elif cb_data == "back_start":
                 tag = f"@{cq['from'].get('username')}" if cq["from"].get("username") else cq["from"].get("first_name")
                 on = is_threads_enabled(chat_id)
-                caption = f"Welcome, {tag}.\nPosted to @{CHANNEL_USERNAME}\nThreads: {'ON ✅' if on else 'OFF ❌'}\nLimit 5 & 5/day"
+                caption = f"Welcome, {tag}.\nYour post will be published to @{CHANNEL_USERNAME}\nThreads: {'ON ✅' if on else 'OFF ❌'}"
                 kb = {"inline_keyboard": [[{"text":"📢 Channel","url":"https://t.me/menfessangel"}],[{"text":"👤 Profile","callback_data":"profil"},{"text":f"🧵 {'ON ✅' if on else 'OFF ❌'}","callback_data":"toggle_threads"}]]}
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":caption,"reply_markup":kb})
                 return "ok",200
@@ -175,7 +179,7 @@ def handler():
                 _, ch_msg_id = cb_data.split("|")
                 try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":CHANNEL_ID,"message_id":ch_msg_id})
                 except: pass
-                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":"Post deleted! 🗑️"})
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":"Post has been deleted! 🗑️"})
                 return "ok",200
 
         if "message" not in data: return "ok",200
@@ -185,15 +189,15 @@ def handler():
 
         if "text" in msg and msg["text"].startswith(("/start","/menu")):
             on = is_threads_enabled(chat_id)
-            caption = f"""🚀 Welcome, {tag}.
+            caption = f"""🚀 Welcome, {tag}!
 
-Posted to @{CHANNEL_USERNAME}
-Threads: {'ON ✅' if on else 'OFF ❌ (Default - Telegram only)'}
+Your submission will be posted to @{CHANNEL_USERNAME}
+Threads: {'ON ✅' if on else 'OFF ❌ (Default: Telegram only)'}
 
-⚠️ Threads sensitif, hindari vulgar.
+⚠️ Please maintain compliance for Threads.
 
-Limit 5 text & 5 media/day. Reset 00:00 WIB."""
-            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":caption,"reply_markup":get_main_menu()})
+Daily Limit: 5 texts & 5 media. Reset at 00:00 WIB."""
+            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":caption,"reply_markup":get_start_menu()})
             return "ok",200
 
         raw_caption = msg.get("caption") or msg.get("text") or ""
@@ -206,10 +210,10 @@ Limit 5 text & 5 media/day. Reset 00:00 WIB."""
         caption = add_hashtag(raw_caption)
 
         if is_media and quotas[key]["media"] >= LIMIT_MEDIA:
-            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"❌ Media quota exceeded!"})
+            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"❌ Media quota exceeded! You have reached your daily limit."})
             return "ok",200
         if not is_media and quotas[key]["text"] >= LIMIT_TEXT:
-            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"❌ Text quota exceeded!"})
+            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"❌ Text quota exceeded! You have reached your daily limit."})
             return "ok",200
 
         if is_media:
@@ -235,15 +239,15 @@ Limit 5 text & 5 media/day. Reset 00:00 WIB."""
         save_quota(quotas)
         q = quotas[key]
 
-        status_msg = "✅ Posted to Telegram + Threads" if threads_id else ("✅ Posted to Telegram only (Threads OFF)" if not is_threads_enabled(chat_id) else "⚠️ Telegram OK, Threads failed")
+        status_msg = "Successfully posted to Telegram & Threads" if threads_id else ("Successfully posted to Telegram only (Threads OFF)" if not is_threads_enabled(chat_id) else "Posted to Telegram. Threads publication failed")
 
-        pesan = f"""🏷️ Quota
-📄 Text : {q['text']}/{LIMIT_TEXT}
-📪 Media : {q['media']}/{LIMIT_MEDIA}
+        pesan = f"""🏷️ QUOTA STATUS
+📄 Text: {q['text']}/{LIMIT_TEXT}
+📦 Media: {q['media']}/{LIMIT_MEDIA}
 {status_msg}, {tag}!"""
 
-        buttons = [[{"text":"➡️ See Telegram","url":curl}]]
-        if threads_id: buttons.append([{"text":"🧵 See Threads","url":f"https://www.threads.net/@{CHANNEL_USERNAME}"}])
+        buttons = [[{"text":"➡️ View on Telegram","url":curl}]]
+        if threads_id: buttons.append([{"text":"🧵 View on Threads","url":f"https://www.threads.net/@{CHANNEL_USERNAME}"}])
         buttons.append([{"text":"📋 Menu","callback_data":"menu_main"}, {"text":"🗑️ Delete","callback_data":f"delete|{cmid}"}])
         SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":pesan,"reply_markup":{"inline_keyboard":buttons}})
 
