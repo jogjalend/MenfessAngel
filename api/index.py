@@ -67,15 +67,14 @@ def add_watermark_fast(b):
         return out.getvalue()
     except: return b
 
-def get_start_text(chat_id):
+def get_start_text(chat_id, first_name="there"):
     on = is_threads_enabled(chat_id)
     mode = "𝖮𝖭" if on else "𝖮𝖥"
+    safe_name = first_name if first_name else "there"
     return (
         "𝗠𝗘𝗡𝗙𝗘𝗦𝗦 𝗔𝗡𝗚𝗘𝗟 𝗕𝗢𝗧\n"
         "______________________________\n\n"
-        "Hi {username}!
-
-𝖯𝗋𝗈𝗆𝗈𝗍𝖾 𝗒𝗈𝗎𝗋 𝖺𝖼𝖼𝗈𝗎𝗇𝗍 𝗁𝖾𝗋𝖾\n\n"
+        f"Hi {safe_name}!\n\n𝖯𝗋𝗈𝗆𝗈𝗍𝖾 𝗒𝗈𝗎𝗋 𝖺𝖼𝖼𝗈𝗎𝗇𝗍 𝗁𝖾𝗋𝖾\n\n"
         "𝖯𝗎𝖻𝗅𝗂𝗌𝗁 𝗍𝗈:\n"
         "- 𝖢𝗁𝖺𝗇𝗇𝖾𝗅: @menfessangel\n"
         "- 𝖳𝗁𝗋𝖾𝖺𝖽𝗌: @jogjalend\n"
@@ -114,7 +113,7 @@ def get_admin_menu():
     ]}
 
 @app.route("/", methods=['GET'])
-def home(): return "Bot V30 Font Menu",200
+def home(): return "Bot V31 Fixed Name",200
 @app.route("/", methods=['POST'])
 @app.route("/api/index.py", methods=['POST'])
 def handler():
@@ -126,6 +125,7 @@ def handler():
             cb_data = cq["data"]
             chat_id = cq["message"]["chat"]["id"]
             msg_id = cq["message"]["message_id"]
+            user_first = cq["from"].get("first_name","there")
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
             if cb_data.startswith("delete_post_"):
                 try:
@@ -135,7 +135,7 @@ def handler():
                 except: pass
                 return "ok",200
             if cb_data in ["menu_main", "back_to_start"]:
-                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":get_start_text(chat_id),"reply_markup":get_main_menu(chat_id)})
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":get_start_text(chat_id, user_first),"reply_markup":get_main_menu(chat_id)})
                 return "ok",200
             elif cb_data == "admin_panel":
                 if not is_admin(chat_id): return "ok",200
@@ -169,7 +169,8 @@ def handler():
             t=text.split()[1]; b=load_blocked(); b[t]=f"blocked"; save_blocked(b)
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"{t} 𝖻𝗅𝗈𝖼𝗄𝖾𝖽"}); return "ok",200
         if text.startswith(("/start","/menu")):
-            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":get_start_text(chat_id),"reply_markup":get_main_menu(chat_id)})
+            user_first = msg["from"].get("first_name","there")
+            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":get_start_text(chat_id, user_first),"reply_markup":get_main_menu(chat_id)})
             return "ok",200
         raw_caption = msg.get("caption") or msg.get("text") or ""
         if not raw_caption and "photo" not in msg: return "ok",200
@@ -195,7 +196,7 @@ def handler():
             save_quota(quotas)
             on = is_threads_enabled(chat_id)
             keterangan = f"𝖲𝗎𝖼𝖼𝖾𝗌𝖿𝗎𝗅𝗅𝗒 𝗉𝗈𝗌𝗍𝖾𝖽 𝗍𝗈 𝖳𝖾𝗅𝖾𝗀𝗋𝖺𝗆 & 𝖳𝗁𝗋𝖾𝖺𝖽𝗌 (𝖳𝗁𝗋𝖾𝖺𝖽𝗌 𝖮𝖭)" if on else f"𝖲𝗎𝖼𝖼𝖾𝗌𝗌𝖿𝗎𝗅𝗅𝗒 𝗉𝗈𝗌𝗍𝖾𝖽 𝗍𝗈 𝖳𝖾𝗅𝖾𝗀𝗋𝖺𝗆 𝗈𝗇𝗅𝗒 (𝖳𝗁𝗋𝖾𝖺𝖽𝗌 𝖮𝖥𝖥)"
-            success_text = f"𝖬𝖾𝗇𝖿𝖾𝗌𝗌 𝗌𝖾𝗇𝗍!\n𝖱𝖾𝗆𝖺𝗂𝗇𝗂𝗇𝗀 𝗊𝗎𝗈𝗍𝖺:\n𝖳𝖾𝗑𝗍: {quotas[key]['text']}/{LIMIT_TEXT}\n𝖬𝖾𝖽𝗂𝖺: {quotas[key]['media']}/{LIMIT_MEDIA}\n{keterangan}\n𝖩𝗈𝗂𝗇: @{CHANNEL_USERNAME}"
+            success_text = f"𝖬𝖾𝗇𝖿𝖾𝗌𝗌 𝗌𝖾𝗇𝗍!\n𝖱𝖾𝗆𝖺𝗂𝗇𝗀 𝗊𝗎𝗈𝗍𝖺:\n𝖳𝖾𝗑𝗍: {quotas[key]['text']}/{LIMIT_TEXT}\n𝖬𝖾𝖽𝗂𝖺: {quotas[key]['media']}/{LIMIT_MEDIA}\n{keterangan}\n𝖩𝗈𝗂𝗇: @{CHANNEL_USERNAME}"
             tl = f"https://t.me/{CHANNEL_USERNAME}/{pid}"
             th = f"https://www.threads.net/@jogjalend"
             btn = {"inline_keyboard": [[{"text":"𝖲𝖾𝖾 𝗈𝗇 𝖼𝗁𝖺𝗇𝗇𝖾𝗅","url":tl}, {"text":"𝖲𝖾𝖾 𝗈𝗇 𝖳𝗁𝗋𝖾𝖺𝖽𝗌","url":th}],[{"text":"𝖣𝖾𝗅𝖾𝗍𝖾","callback_data":f"delete_post_{pid}"}]]} if on else {"inline_keyboard": [[{"text":"𝖲𝖾𝖾 𝗈𝗇 𝖼𝗁𝖺𝗇𝗇𝖾𝗅","url":tl}],[{"text":"𝖣𝖾𝗅𝖾𝗍𝖾","callback_data":f"delete_post_{pid}"}]]}
