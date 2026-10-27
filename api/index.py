@@ -106,7 +106,6 @@ def make_stats_image():
 def get_start_text(chat_id, first_name="Jogja Lend"):
     name = first_name if first_name else "there"
     return (
-        "MENFESS ANGEL BOT\n"
         f"Hi {name}!\n"
         "Promote your account here!\n"
         "______________________________________\n\n"
