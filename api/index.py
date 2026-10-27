@@ -1,5 +1,5 @@
 from flask import Flask, request
-import os, json, requests
+import os, json, requests, re
 from datetime import datetime, timezone, timedelta
 
 app = Flask(__name__)
@@ -23,7 +23,6 @@ def load(p,d=None):
    with open(p,"r") as f: return json.load(f)
  except: pass
  return d if d is not None else {}
-
 def save(p,d):
  try:
   with open(p,"w") as f: json.dump(d,f)
@@ -33,14 +32,19 @@ def get_global():
  g=load(FILES["global"],{})
  if not g:
   g={
-   "limit_text":5,
-   "limit_media":5,
+   "limit_text":5,"limit_media":5,
    "welcome":"Hi {name}!\nPromote your account here!\n______________________________________\n\nPublish to:\n- Channel -> @menfessangel\n- Threads -> @jogjalend [optional]\n- X -> @jogjalendpm [maintenance]\n\nTap Post to start!",
    "hashtag":"\n\n#jogjalend",
-   "rules":"1. No spam\n2. No SARA & porn\n3. Max 5/hari"
+   "rules":"1. No spam\n2. No SARA\n3. Max 5/hari"
   }
   save(FILES["global"], g)
  return g
+
+def clean_name(name):
+ # FIX Hi Malayalam corrupt
+ if not name: return "Kamu"
+ c = re.sub(r'[^A-Za-z0-9 ]', '', name).strip()[:15]
+ return c if len(c)>=2 else "Kamu"
 
 def is_admin(cid):
  try: return int(cid) in BASE_ADMIN
@@ -51,9 +55,10 @@ def get_real_count():
   r=SESSION.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMemberCount?chat_id={CHANNEL_ID}",timeout=10).json()
   if r.get("ok"): return r["result"]
  except: pass
- return 658
+ return 0
 
 def get_main_menu(cid):
+ # INI LAYOUT V47.3 ASLI - ADA SEMUA
  btn=[
   [{"text":"My Profile","callback_data":"profil"}],
   [{"text":"Rules","callback_data":"rules"},{"text":"Post","callback_data":"post"}],
@@ -77,12 +82,12 @@ def get_admin_menu():
 @app.route("/api/index.py", methods=['GET','POST'])
 def handler():
  if request.method=='GET':
-  return f"Bot V47.3 Fixed - {get_real_count()} LIVE - Khusus 8584319568",200
+  return f"Bot V47.3 ORIGINAL - {get_real_count()} LIVE - Khusus 8584319568",200
  try:
   data=request.get_json()
   if not data: return "ok",200
   if "callback_query" in data:
-   cq=data["callback_query"]; cb=cq["data"]; cid=cq["message"]["chat"]["id"]; mid=cq["message"]["message_id"]; fn=cq["from"].get("first_name","Kamu")
+   cq=data["callback_query"]; cb=cq["data"]; cid=cq["message"]["chat"]["id"]; mid=cq["message"]["message_id"]; fn=clean_name(cq["from"].get("first_name","Kamu"))
    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",json={"callback_query_id":cq["id"]})
    if cb=="main":
     g=get_global()
@@ -90,12 +95,12 @@ def handler():
     return "ok",200
    if cb=="profil":
     g=get_global(); q=load(FILES["quota"],{}); key=f"{cid}_{datetime.now(WIB).strftime('%Y-%m-%d')}"; cur=q.get(key,{"text":0,"media":0})
-    txt=f"My Profile\nID: {cid}\nText: {cur['text']}/{g['limit_text']}\nMedia: {cur['media']}/{g['limit_media']}"
+    txt=f"My Profile\nID: {cid}\nName: {fn}\n\nText: {cur['text']}/{g['limit_text']}\nMedia: {cur['media']}/{g['limit_media']}"
     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json={"chat_id":cid,"message_id":mid,"text":txt,"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"main"}]]}})
     return "ok",200
    if cb in ["rules","post","threads","stats","help"]:
     g=get_global()
-    txts={"rules":g["rules"],"post":"Kirim teks/foto/video langsung","threads":"Threads ON/OFF optional","stats":f"Channel: {get_real_count()} LIVE\nUsers: {len(load(FILES['members'],{}))}","help":"Kirim menfess auto ke channel"}
+    txts={"rules":f"Rules\n{g['rules']}","post":"Kirim teks/foto/video langsung ke bot ini","threads":"Threads Setting optional","stats":f"Stats\nChannel: {get_real_count()} LIVE\nUsers: {len(load(FILES['members'],{}))}","help":"Help: Kirim menfess auto post"}
     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json={"chat_id":cid,"message_id":mid,"text":txts[cb],"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"main"}]]}})
     return "ok",200
    if not is_admin(cid): return "ok",200
@@ -116,7 +121,7 @@ def handler():
   if "message" not in data: return "ok",200
   msg=data["message"]; cid=msg["chat"]["id"]; text=msg.get("text","")
   members=load(FILES["members"],{})
-  if str(cid) not in members: members[str(cid)]={"name":msg["from"].get("first_name","-")}; save(FILES["members"],members)
+  if str(cid) not in members: members[str(cid)]={"name":clean_name(msg["from"].get("first_name","-"))}; save(FILES["members"],members)
   if is_admin(cid) and text.startswith("/"):
    if text.startswith("/block "): t=text.split()[1]; b=load(FILES["blocked"],{}); b[t]="x"; save(FILES["blocked"],b); SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":cid,"text":f"{t} blocked"}); return "ok",200
    if text.startswith("/unblock "): t=text.split()[1]; b=load(FILES["blocked"],{}); b.pop(t,None); save(FILES["blocked"],b); SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":cid,"text":f"{t} unblocked"}); return "ok",200
@@ -126,7 +131,7 @@ def handler():
     save(FILES["quota"],q); SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":cid,"text":"Quota reset"}); return "ok",200
   if text.startswith(("/start","/menu")):
    g=get_global()
-   SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":cid,"text":g["welcome"].replace("{name}",msg["from"].get("first_name","Kamu")),"reply_markup":get_main_menu(cid)})
+   SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":cid,"text":g["welcome"].replace("{name}",clean_name(msg["from"].get("first_name","Kamu"))),"reply_markup":get_main_menu(cid)})
    return "ok",200
   quota=load(FILES["quota"],{}); key=f"{cid}_{datetime.now(WIB).strftime('%Y-%m-%d')}"
   if key not in quota: quota[key]={"text":0,"media":0}
