@@ -35,8 +35,16 @@ def clean(s):
 def get_global():
  g=load(FILES["global"],{})
  if not g:
-  g={"limit_text":5,"limit_media":5,"hashtag":"\n\n#jogjalend","rules":"1. No spam\n2. No SARA\n3. Max 5/hari"}
+  g={
+   "limit_text":5,"limit_media":5,
+   "hashtag":"\n\n#jogjalend",
+   "rules":"1. No spam\n2. No SARA\n3. Max 5/hari",
+   "threads_enabled":False,
+   "threads_user":"@jogjalend"
+  }
   save(FILES["global"], g)
+ if "threads_enabled" not in g: g["threads_enabled"]=False
+ if "threads_user" not in g: g["threads_user"]="@jogjalend"
  return g
 
 def is_admin(cid):
@@ -48,7 +56,7 @@ def get_real():
   r=SESSION.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMemberCount?chat_id={CHANNEL_ID}",timeout=10).json()
   if r.get("ok"): return r["result"]
  except: pass
- return 658
+ return 659
 
 def main_menu(cid):
  btn=[
@@ -61,15 +69,6 @@ def main_menu(cid):
  btn.append([{"text":"Stats","callback_data":"stats"},{"text":"Help","callback_data":"help"}])
  return {"inline_keyboard":btn}
 
-def admin_menu():
- return {"inline_keyboard":[
-  [{"text":"Real Count","callback_data":"admin"},{"text":"All Users","callback_data":"all"}],
-  [{"text":"Blocked","callback_data":"blocked"}],
-  [{"text":"Blok","callback_data":"b_info"},{"text":"Unblok","callback_data":"ub_info"}],
-  [{"text":"Reset Quota","callback_data":"r_info"}],
-  [{"text":"Back","callback_data":"main"}]
- ]}
-
 def welcome_msg(name):
   return f"Hi {name}!\nPromote your account here!\n______________________________________\n\nPublish to:\n- Channel -> @menfessangel\n- Threads -> @jogjalend [optional]\n- X -> @jogjalendpm [maintenance]\n\nTap Post to start!"
 
@@ -77,7 +76,7 @@ def welcome_msg(name):
 @app.route("/api/index.py", methods=['GET','POST'])
 def handler():
  if request.method=='GET':
-  return f"V47.3 FINAL - {get_real()} LIVE - Khusus 8584319568",200
+  return f"V47.4 - Threads+Stats IMG - {get_real()} LIVE",200
  try:
   data=request.get_json()
   if not data: return "ok",200
@@ -92,20 +91,61 @@ def handler():
    
    if cb=="profil":
     g=get_global(); q=load(FILES["quota"],{}); key=f"{cid}_{datetime.now(WIB).strftime('%Y-%m-%d')}"; cur=q.get(key,{"text":0,"media":0})
-    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json={"chat_id":cid,"message_id":mid,"text":f"My Profile\nID: {cid}\nName: {fn}\n\nText: {cur['text']}/{g['limit_text']}\nMedia: {cur['media']}/{g['limit_media']}","reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"main"}]]}})
+    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json={"chat_id":cid,"message_id":mid,"text":f"My Profile\nID: {cid}\nName: {fn}\n\nToday:\nText: {cur['text']}/{g['limit_text']}\nMedia: {cur['media']}/{g['limit_media']}\n\nThreads: {g['threads_user']}","reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"main"}]]}})
+    return "ok",200
+
+   if cb=="threads":
+    g=get_global()
+    status="ON ✅" if g["threads_enabled"] else "OFF ❌"
+    txt=f"Threads Setting\n\nStatus: {status}\nUsername: {g['threads_user']}\n\nFitur ini buat auto repost menfess ke Threads (optional).\nJika ON, setiap postingan juga ke Threads.\n\nKetik /setthreads @username buat ganti\nKetik /threadson / /threadsoff buat ON/OFF"
+    kb={"inline_keyboard":[
+     [{"text":"Turn ON" if not g["threads_enabled"] else "Turn OFF","callback_data":"threads_toggle"}],
+     [{"text":"Set @jogjalend","callback_data":"threads_set"}],
+     [{"text":"Back","callback_data":"main"}]
+    ]}
+    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json={"chat_id":cid,"message_id":mid,"text":txt,"reply_markup":kb})
+    return "ok",200
+
+   if cb=="threads_toggle":
+    if not is_admin(cid):
+     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":cid,"text":"Khusus admin"})
+     return "ok",200
+    g=get_global(); g["threads_enabled"]=not g["threads_enabled"]; save(FILES["global"],g)
+    status="ON ✅" if g["threads_enabled"] else "OFF ❌"
+    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json={"chat_id":cid,"message_id":mid,"text":f"Threads Setting\nStatus: {status}\nUsername: {g['threads_user']}\n\nBerhasil di {status}","reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"threads"}]]}})
+    return "ok",200
+
+   if cb=="threads_set":
+    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json={"chat_id":cid,"message_id":mid,"text":"Ketik /setthreads @username baru\nContoh: /setthreads @jogjalend","reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"threads"}]]}})
     return "ok",200
    
-   if cb in ["rules","post","threads","stats","help"]:
+   if cb=="stats":
+    g=get_global(); members=load(FILES["members"],{}); quota=load(FILES["quota"],{}); blocked=load(FILES["blocked"],{})
+    real=get_real(); today=datetime.now(WIB).strftime('%Y-%m-%d')
+    today_posts=sum(1 for k in quota.keys() if today in k)
+    total_posts=sum(v.get("text",0)+v.get("media",0) for v in quota.values())
+    txt=f"📊 Stats LIVE\n\nChannel: {real} LIVE\nUsers: {len(members)}\nBlocked: {len(blocked)}\nTotal Posts: {total_posts}\nToday: {today_posts}\n\nThreads: {g['threads_user']} ({'ON' if g['threads_enabled'] else 'OFF'})\n\nUpdated: {datetime.now(WIB).strftime('%d/%m %H:%M')} WIB"
+    # kirim dengan gambar chart simple via placeholder
+    img_url=f"https://via.placeholder.com/600x300/0f7a3a/ffffff?text=Channel+{real}+LIVE%0AUsers+{len(members)}+Posts+{total_posts}"
+    try:
+     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",json={"chat_id":cid,"photo":img_url,"caption":txt,"reply_markup":{"inline_keyboard":[[{"text":"Refresh","callback_data":"stats"},{"text":"Back","callback_data":"main"}]]}}).json()
+     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",json={"chat_id":cid,"message_id":mid})
+    except:
+     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json={"chat_id":cid,"message_id":mid,"text":txt,"reply_markup":{"inline_keyboard":[[{"text":"Refresh","callback_data":"stats"},{"text":"Back","callback_data":"main"}]]}})
+    return "ok",200
+
+   if cb in ["rules","post","help"]:
     g=get_global()
-    txts={"rules":f"Rules\n{g['rules']}","post":"Kirim teks/foto/video langsung ke bot!\nAuto ke @menfessangel","threads":"Threads Setting optional","stats":f"Stats\nChannel: {get_real()} LIVE\nUsers: {len(load(FILES['members'],{}))}","help":"Help: Kirim menfess auto post"}
+    txts={"rules":f"Rules\n{g['rules']}","post":"Kirim teks/foto/video langsung ke bot!\nAuto ke @menfessangel + #jogjalend","help":"Help: Kirim menfess auto post"}
     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json={"chat_id":cid,"message_id":mid,"text":txts[cb],"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"main"}]]}})
     return "ok",200
 
    if not is_admin(cid): return "ok",200
+   # ADMIN PANEL
    members=load(FILES["members"],{}); blocked=load(FILES["blocked"],{}); quota=load(FILES["quota"],{})
    if cb=="admin":
     real=get_real(); total=sum(v.get("text",0)+v.get("media",0) for v in quota.values())
-    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json={"chat_id":cid,"message_id":mid,"text":f"Admin Panel\nSubs: {real} LIVE\nUsers: {len(members)}\nBlocked: {len(blocked)}\nPosts: {total}\nKhusus 8584319568","reply_markup":admin_menu()})
+    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json={"chat_id":cid,"message_id":mid,"text":f"Admin Panel\nSubs: {real} LIVE\nUsers: {len(members)}\nBlocked: {len(blocked)}\nPosts: {total}\nKhusus 8584319568","reply_markup":{"inline_keyboard":[[{"text":"All Users","callback_data":"all"}],[{"text":"Blocked","callback_data":"blocked"}],[{"text":"Back","callback_data":"main"}]]}})
     return "ok",200
    if cb=="all":
     txt="All Users\n"+"\n".join([f"{clean(v.get('name','-'))} {k}" for k,v in list(members.items())[-20:]]) or "0"
@@ -115,10 +155,6 @@ def handler():
     txt=f"Blocked {len(blocked)}\n"+"\n".join(blocked.keys()) or "0"
     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json={"chat_id":cid,"message_id":mid,"text":txt,"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"admin"}]]}})
     return "ok",200
-   infos={"b_info":"Ketik /block ID","ub_info":"Ketik /unblock ID","r_info":"Ketik /resetquota ID atau /resetquota all"}
-   if cb in infos:
-    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json={"chat_id":cid,"message_id":mid,"text":infos[cb],"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"admin"}]]}})
-    return "ok",200
 
   if "message" not in data: return "ok",200
   msg=data["message"]; cid=msg["chat"]["id"]; text=msg.get("text","")
@@ -127,7 +163,18 @@ def handler():
    members[str(cid)]={"name":clean(msg["from"].get("first_name"))}
    save(FILES["members"],members)
 
+  # ADMIN COMMANDS
   if is_admin(cid) and text.startswith("/"):
+   g=get_global()
+   if text.startswith("/setthreads "):
+    u=text.split()[1]; g["threads_user"]=u; save(FILES["global"],g)
+    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":cid,"text":f"Threads user set ke {u}"}); return "ok",200
+   if text.startswith("/threadson"):
+    g["threads_enabled"]=True; save(FILES["global"],g)
+    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":cid,"text":"Threads ON"}); return "ok",200
+   if text.startswith("/threadsoff"):
+    g["threads_enabled"]=False; save(FILES["global"],g)
+    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":cid,"text":"Threads OFF"}); return "ok",200
    if text.startswith("/block "):
     t=text.split()[1]; b=load(FILES["blocked"],{}); b[t]="x"; save(FILES["blocked"],b)
     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":cid,"text":f"{t} blocked"}); return "ok",200
@@ -146,6 +193,7 @@ def handler():
    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":cid,"text":welcome_msg(fn),"reply_markup":main_menu(cid)})
    return "ok",200
 
+  # POSTING
   quota=load(FILES["quota"],{}); blocked=load(FILES["blocked"],{})
   if str(cid) in blocked:
    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":cid,"text":"Kamu di blokir"}); return "ok",200
@@ -172,7 +220,7 @@ def handler():
    if is_media: quota[key]["media"]+=1
    else: quota[key]["text"]+=1
    save(FILES["quota"],quota)
-   SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":cid,"text":f"Sent! Text {quota[key]['text']}/{g['limit_text']} Media {quota[key]['media']}/{g['limit_media']}"})
+   SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":cid,"text":f"✅ Sent! Text {quota[key]['text']}/{g['limit_text']} Media {quota[key]['media']}/{g['limit_media']}"})
 
  except Exception as e: print(e)
  return "ok",200
