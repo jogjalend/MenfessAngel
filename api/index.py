@@ -72,7 +72,7 @@ def get_start_text(chat_id, first_name="there"):
     mode = "𝖮𝖭" if on else "𝖮𝖥"
     safe_name = first_name if first_name else "there"
     return (
-        "𝗠𝗘𝗡𝗙𝗘𝗦𝗦 𝗔𝗡𝗚𝗘𝗟 𝗕𝗢𝗧\n"
+        "●•●𝗠𝗘𝗡𝗙𝗘𝗦𝗦 𝗔𝗡𝗚𝗘𝗟 𝗕𝗢𝗧●•●\n"
         "______________________________\n\n"
         f"Hi {safe_name}!\n\n𝖯𝗋𝗈𝗆𝗈𝗍𝖾 𝗒𝗈𝗎𝗋 𝖺𝖼𝖼𝗈𝗎𝗇𝗍 𝗁𝖾𝗋𝖾\n\n"
         "𝖯𝗎𝖻𝗅𝗂𝗌𝗁 𝗍𝗈:\n"
