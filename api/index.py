@@ -1,6 +1,6 @@
-import os, io, json, requests, sys, time, csv
+import os, io, json, requests, sys, time
 from flask import Flask, request
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timezone, timedelta
 app = Flask(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -19,11 +19,6 @@ WIB = timezone(timedelta(hours=7))
 SESSION = requests.Session()
 START_TIME = time.time()
 BASE_ADMIN = [8584319568]
-LOGO_CACHE = None
-for p in ["logo.png","api/logo.png"]:
-    if os.path.exists(p):
-        try: LOGO_CACHE = Image.open(p).convert("RGBA"); break
-        except: pass
 
 def load_json(path, default=None):
     try:
@@ -35,7 +30,6 @@ def save_json(path, d):
     try:
         with open(path,"w") as f: json.dump(d,f)
     except: pass
-
 def load_quota(): return load_json(QUOTA_FILE, {})
 def save_quota(d): save_json(QUOTA_FILE, d)
 def load_settings(): return load_json(SETTINGS_FILE, {})
@@ -59,7 +53,6 @@ def load_admins():
     a = load_json(ADMINS_FILE, [])
     if not a: return BASE_ADMIN
     return list(set(BASE_ADMIN + a))
-def save_admins_extra(d): save_json(ADMINS_FILE, d)
 
 def is_admin(chat_id): return int(chat_id) in load_admins()
 def is_blocked(chat_id): return str(chat_id) in load_blocked()
@@ -76,58 +69,16 @@ def add_hashtag(text):
     if not text: return ht.strip()
     if "jogjalend" in text.lower(): return text
     return text.strip() + ht
-def add_watermark_fast(b):
-    if not LOGO_CACHE: return b
-    try:
-        base = Image.open(io.BytesIO(b)).convert("RGBA")
-        w,h = base.size
-        logo = LOGO_CACHE.copy()
-        logo.thumbnail((int(w*0.18), int(w*0.18)), Image.LANCZOS)
-        pad = int(w*0.035)
-        base.paste(logo, (w-logo.width-pad, h-logo.height-pad), logo)
-        out = io.BytesIO()
-        base.convert("RGB").save(out, format="JPEG", quality=92, optimize=True)
-        return out.getvalue()
-    except: return b
 def get_real_channel_count():
     try:
         r = SESSION.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMemberCount?chat_id={CHANNEL_ID}", timeout=10).json()
         if r.get("ok"): return r["result"]
-        r2 = SESSION.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMemberCount?chat_id=@{CHANNEL_USERNAME}", timeout=10).json()
-        if r2.get("ok"): return r2["result"]
     except: pass
     return 0
 def add_log(uid, name, typ):
     logs = load_logs()
     logs.append({"uid":str(uid),"name":name,"type":typ,"time":datetime.now(WIB).strftime("%Y-%m-%d %H:%M")})
     save_logs(logs[-200:])
-
-def make_stats_image():
-    try:
-        import matplotlib
-        matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-        members = load_members(); quota = load_quota()
-        real_channel = get_real_channel_count()
-        total_text = sum(v.get("text",0) for v in quota.values())
-        total_media = sum(v.get("media",0) for v in quota.values())
-        total_post = total_text + total_media
-        today_str = datetime.now(WIB).strftime('%Y-%m-%d')
-        today_post = sum(v.get("text",0)+v.get("media",0) for k,v in quota.items() if today_str in k)
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10,5))
-        fig.patch.set_facecolor('#ffffff')
-        ax1.pie([total_text or 1, total_media or 1], labels=['Text','Media'], autopct='%1.0f%%', colors=['#1d9bf0','#ffad1f'])
-        ax1.set_title('Post Type', fontweight='bold')
-        cats = ['Channel','Bot Users','Today','Total']
-        nums = [real_channel, len(members), today_post, total_post]
-        ax2.bar(cats, nums, color=['#1d9bf0','#7856ff','#00ba7c','#ffad1f'])
-        ax2.set_title(f'@{CHANNEL_USERNAME} - {today_str}', fontweight='bold')
-        for i, v in enumerate(nums): ax2.text(i, v+0.2, str(v), ha='center', fontweight='bold')
-        plt.tight_layout()
-        buf = io.BytesIO(); plt.savefig(buf, format='png', dpi=150); plt.close(); buf.seek(0)
-        return buf.getvalue(), real_channel
-    except:
-        return None, get_real_channel_count()
 
 def get_start_text(first_name="Jogja Lend"):
     g = load_global()
@@ -145,7 +96,7 @@ def get_main_menu(chat_id):
     btns.append([{"text":"Stats","callback_data":"menu_stats"}, {"text":"Help","callback_data":"menu_help"}])
     return {"inline_keyboard": btns}
 
-def get_admin_menu(page=0):
+def get_admin_menu():
     g = load_global()
     maint = "ON" if g.get("maintenance") else "OFF"
     flood = "ON" if g.get("flood") else "OFF"
@@ -168,29 +119,57 @@ def delete_and_send_menu(chat_id, msg_id, first_name):
     except: pass
     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":get_start_text(first_name),"reply_markup":get_main_menu(chat_id)})
 
+def make_avatar_bytes(name):
+    try:
+        initial = (name or "J")[0].upper()
+        img = Image.new('RGB', (800, 800), color=(29, 155, 240))
+        draw = ImageDraw.Draw(img)
+        draw.ellipse((100, 100, 700, 700), fill=(255,255,255))
+        try:
+            font = ImageFont.truetype("DejaVuSans-Bold.ttf", 350)
+        except:
+            font = ImageFont.load_default()
+        bbox = draw.textbbox((0,0), initial, font=font)
+        w = bbox[2]-bbox[0]; h = bbox[3]-bbox[1]
+        draw.text(((800-w)/2, (800-h)/2 - 20), initial, fill=(29,155,240), font=font)
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=90)
+        buf.seek(0)
+        return buf.getvalue()
+    except:
+        return None
+
 def send_profile_with_photo(chat_id, msg_id, user_first):
     try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":chat_id,"message_id":msg_id})
     except: pass
     g = load_global()
-    q = load_quota().get(get_today_key(chat_id), {"text":0,"media":0})
+    quotas = load_quota()
+    key = get_today_key(chat_id)
+    q = quotas.get(key, {"text":0,"media":0})
     on = is_threads_enabled(chat_id)
-    members = load_members(); info = members.get(str(chat_id), {}); real = get_real_channel_count()
-    caption = f"My Profile\n______________________________________\n\nName: {info.get('name', user_first)}\nID: {chat_id}\nUsername: @{info.get('username','-')}\n\nQuota:\nText: {q['text']}/{g['limit_text']}\nMedia: {q['media']}/{g['limit_media']}\nThreads: {'ON' if on else 'OFF'}\nChannel: {real} subs"
+    members = load_members()
+    info = members.get(str(chat_id), {})
+    caption = f"My Profile\n______________________________________\n\nName: {info.get('name', user_first)}\nID: {chat_id}\nUsername: @{info.get('username','-')}\n\nText: {q['text']}/{g['limit_text']}\nMedia: {q['media']}/{g['limit_media']}\nThreads: {'ON' if on else 'OFF'}"
     kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if on else 'OFF'}","callback_data":"toggle_threads"}],[{"text":"Back","callback_data":"menu_main"}]]}
+    photo_bytes = None
     try:
         r = SESSION.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getUserProfilePhotos?user_id={chat_id}&limit=1", timeout=10).json()
         if r.get("ok") and r["result"]["total_count"] > 0:
-            fid = r["result"]["photos"][0][-1]["file_id"]
-            rf = SESSION.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={fid}").json()
-            pb = SESSION.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{rf['result']['file_path']}", timeout=15).content
-            files = {"photo": ("profile.jpg", pb, "image/jpeg")}
-            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":chat_id,"caption":caption,"reply_markup":json.dumps(kb)}, files=files, timeout=20)
-            return
+            file_id = r["result"]["photos"][0][-1]["file_id"]
+            rf = SESSION.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}").json()
+            if rf.get("ok"):
+                photo_bytes = SESSION.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{rf['result']['file_path']}", timeout=15).content
     except: pass
-    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":caption,"reply_markup":kb})
+    if not photo_bytes:
+        photo_bytes = make_avatar_bytes(user_first or info.get('name','J'))
+    if photo_bytes:
+        files = {"photo": ("profile.jpg", photo_bytes, "image/jpeg")}
+        SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":chat_id,"caption":caption,"reply_markup":json.dumps(kb)}, files=files, timeout=20)
+    else:
+        SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":caption,"reply_markup":kb})
 
 @app.route("/", methods=['GET'])
-def home(): return "Bot V47 Ultimate Admin",200
+def home(): return "Bot V47.1 Ultimate Admin + Photo",200
 @app.route("/", methods=['POST'])
 @app.route("/api/index.py", methods=['POST'])
 def handler():
@@ -200,7 +179,6 @@ def handler():
         if "callback_query" in data:
             cq = data["callback_query"]; cb_data = cq["data"]; chat_id = cq["message"]["chat"]["id"]; msg_id = cq["message"]["message_id"]; user_first = cq["from"].get("first_name","Jogja Lend")
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
-
             if cb_data.startswith("delete_post_"):
                 try:
                     tid = int(cb_data.replace("delete_post_",""))
@@ -210,23 +188,15 @@ def handler():
                     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"Post deleted","reply_markup":{"inline_keyboard":[[{"text":"Back to Menu","callback_data":"menu_main"}]]}})
                 except: pass
                 return "ok",200
-
             if cb_data.startswith("admin_view_"):
                 if not is_admin(chat_id): return "ok",200
-                target = cb_data.replace("admin_view_",""); members = load_members(); blocked = load_blocked(); quota = load_quota(); settings = load_settings(); warns = load_warns()
+                target = cb_data.replace("admin_view_",""); members = load_members(); blocked = load_blocked(); quota = load_quota(); warns = load_warns()
                 info = members.get(target, {}); user_posts = sum(v.get("text",0)+v.get("media",0) for k,v in quota.items() if k.startswith(target+"_"))
                 today_key = f"{target}_{datetime.now(WIB).strftime('%Y-%m-%d')}"; today_q = quota.get(today_key, {"text":0,"media":0})
                 txt = f"USER DETAIL\n______________________________________\n\nID: {target}\nName: {info.get('name','-')}\nUsername: @{info.get('username','-')}\nJoined: {info.get('joined','-')}\nBlocked: {'YES' if target in blocked else 'NO'}\nWarns: {warns.get(target,0)}/3\nToday: {today_q['text']}/{today_q['media']}\nTotal: {user_posts}"
-                kb = {"inline_keyboard": [
-                    [{"text":"Warn +1","callback_data":f"admin_warn_{target}"}, {"text":"Blok","callback_data":f"admin_block_{target}"}],
-                    [{"text":"Unblok","callback_data":f"admin_unblock_{target}"}, {"text":"Reset Warn","callback_data":f"admin_unwarn_{target}"}],
-                    [{"text":"Hapus Data","callback_data":f"admin_del_{target}"}, {"text":"Reset Quota","callback_data":f"admin_reset_{target}"}],
-                    [{"text":"Back","callback_data":"admin_members_0"}]
-                ]}
+                kb = {"inline_keyboard": [[{"text":"Warn +1","callback_data":f"admin_warn_{target}"}, {"text":"Blok","callback_data":f"admin_block_{target}"}],[{"text":"Unblok","callback_data":f"admin_unblock_{target}"}, {"text":"Reset Warn","callback_data":f"admin_unwarn_{target}"}],[{"text":"Hapus Data","callback_data":f"admin_del_{target}"}, {"text":"Reset Quota","callback_data":f"admin_reset_{target}"}],[{"text":"Back","callback_data":"admin_members_0"}]]}
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":kb})
                 return "ok",200
-
-            # Simple admin actions
             if cb_data.startswith("admin_block_") or cb_data.startswith("admin_unblock_") or cb_data.startswith("admin_del_") or cb_data.startswith("admin_reset_") or cb_data.startswith("admin_warn_") or cb_data.startswith("admin_unwarn_"):
                 if not is_admin(chat_id): return "ok",200
                 if cb_data.startswith("admin_block_"):
@@ -245,27 +215,19 @@ def handler():
                     t=cb_data.replace("admin_unwarn_",""); w=load_warns(); w.pop(t,None); save_warns(w); txt=f"Warn {t} direset"
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"admin_panel"}]]}})
                 return "ok",200
-
-            if cb_data in ["menu_main","back_to_start"]:
+            if cb_data in ["menu_main"]:
                 delete_and_send_menu(chat_id, msg_id, user_first); return "ok",200
             if cb_data in ["profil","toggle_threads","menu_threads"]:
                 if cb_data=="toggle_threads": set_threads_enabled(chat_id, not is_threads_enabled(chat_id))
                 send_profile_with_photo(chat_id, msg_id, user_first); return "ok",200
-
             if cb_data=="menu_stats":
-                img_bytes, real_count = make_stats_image()
-                members = load_members(); blocked = load_blocked(); quota = load_quota()
-                total_post = sum(v.get("text",0)+v.get("media",0) for v in quota.values())
-                caption = f"MENFESS ANGEL - STATS\n______________________________________\n\nChannel Subs: {real_count}\nBot Users: {len(members)}\nBlocked: {len(blocked)}\nTotal Posts: {total_post}\nDate: {datetime.now(WIB).strftime('%Y-%m-%d')}"
+                real = get_real_channel_count(); m = load_members(); b = load_blocked(); q = load_quota()
+                total = sum(v.get("text",0)+v.get("media",0) for v in q.values())
+                txt = f"STATS\n______________________________________\n\nChannel Subs: {real}\nBot Users: {len(m)}\nBlocked: {len(b)}\nTotal Posts: {total}\nDate: {datetime.now(WIB).strftime('%Y-%m-%d')}"
                 try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":chat_id,"message_id":msg_id})
                 except: pass
-                if img_bytes:
-                    files = {"photo": ("stats.png", img_bytes, "image/png")}
-                    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":chat_id,"caption":caption,"reply_markup":json.dumps({"inline_keyboard":[[{"text":"Back","callback_data":"menu_main"}]]})}, files=files)
-                else:
-                    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":caption,"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"menu_main"}]]}})
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt,"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"menu_main"}]]}})
                 return "ok",200
-
             if cb_data=="admin_panel":
                 if not is_admin(chat_id): return "ok",200
                 real=get_real_channel_count(); m=load_members(); b=load_blocked(); q=load_quota(); g=load_global(); logs=load_logs()
@@ -306,6 +268,7 @@ def handler():
                 for i,(uid,tot) in enumerate(top,1): txt+=f"{i}. {members.get(uid,{}).get('name','-')[:12]} {uid} - {tot}\n"
                 txt+="\nLOW 10\n______________________________________\n"
                 for i,(uid,tot) in enumerate(low,1): txt+=f"{i}. {members.get(uid,{}).get('name','-')[:12]} {uid} - {tot}\n"
+                if not top: txt="Belum ada data"
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"admin_panel"}]]}})
                 return "ok",200
             if cb_data=="admin_logs":
@@ -335,13 +298,13 @@ def handler():
                 return "ok",200
             if cb_data=="admin_words":
                 if not is_admin(chat_id): return "ok",200
-                words=load_words(); txt=f"WORD FILTER {len(words)}\n______________________________________\n{', '.join(words[:30])}\n\nCommand:\n/addword kata\n/delword kata\n/listwords"
+                words=load_words(); txt=f"WORD FILTER {len(words)}\n______________________________________\n{', '.join(words[:30]) or 'empty'}\n\nCommand:\n/addword kata\n/delword kata\n/listwords"
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"admin_panel"}]]}})
                 return "ok",200
             if cb_data=="admin_broadcast" or cb_data=="admin_broadcast_active":
                 if not is_admin(chat_id): return "ok",200
                 typ = "active today" if "active" in cb_data else "all"
-                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":f"BROADCAST {typ}\n______________________________________\nKirim: /broadcast {typ} pesan lu\nContoh: /broadcast all Halo","reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"admin_panel"}]]}})
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":f"BROADCAST {typ}\n______________________________________\nKirim: /broadcast {typ} pesan lu","reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"admin_panel"}]]}})
                 return "ok",200
             if cb_data=="admin_export":
                 if not is_admin(chat_id): return "ok",200
@@ -356,10 +319,10 @@ def handler():
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument", data={"chat_id":chat_id,"caption":"Backup JSON"}, files=files); return "ok",200
             if cb_data=="admin_set_quota":
                 if not is_admin(chat_id): return "ok",200
-                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":"SET QUOTA\n/send /setquota 10 10","reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"admin_panel"}]]}}); return "ok",200
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":"SET QUOTA\nKirim /setquota 10 10","reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"admin_panel"}]]}}); return "ok",200
             if cb_data=="admin_set_hashtag":
                 if not is_admin(chat_id): return "ok",200
-                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":"SET HASHTAG\n/send /sethashtag #newtag atau /sethashtag off","reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"admin_panel"}]]}}); return "ok",200
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":"SET HASHTAG\nKirim /sethashtag #newtag atau /sethashtag off","reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"admin_panel"}]]}}); return "ok",200
             if cb_data=="admin_toggle_maint":
                 if not is_admin(chat_id): return "ok",200
                 g=load_global(); g["maintenance"]=not g.get("maintenance",False); save_global(g)
@@ -383,8 +346,6 @@ def handler():
             if cb_data=="admin_reset":
                 if not is_admin(chat_id): return "ok",200
                 save_quota({}); SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":"All quota reset","reply_markup":get_admin_menu()}); return "ok",200
-
-            # default
             txts={"menu_post":"Post Menfess\nJust send text or photo!","menu_rules":load_global().get("rules","Rules"),"menu_help":"Help /start"}
             txt=txts.get(cb_data,"Menu")
             try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"menu_main"}]]}})
@@ -396,21 +357,17 @@ def handler():
         members=load_members()
         if str(chat_id) not in members:
             members[str(chat_id)]={"username":msg["from"].get("username","-"),"name":msg["from"].get("first_name","-"),"joined":datetime.now(WIB).strftime("%Y-%m-%d %H:%M")}; save_members(members)
-
         g=load_global()
         if g.get("maintenance") and not is_admin(chat_id):
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"Bot maintenance"}); return "ok",200
         if is_blocked(chat_id) and not is_admin(chat_id):
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"You are blocked"}); return "ok",200
-
-        # WORD FILTER CHECK
         if not is_admin(chat_id):
             words=load_words()
             low=(msg.get("text","")+" "+msg.get("caption","")).lower()
             for w in words:
                 if w.lower() in low:
-                    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Blocked word detected: {w}"}); return "ok",200
-
+                    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Blocked word: {w}"}); return "ok",200
         if is_admin(chat_id):
             if text.startswith("/broadcast "):
                 parts=text.split()
@@ -449,25 +406,22 @@ def handler():
             if text.startswith("/warn "):
                 t=text.split()[1]; w=load_warns(); w[t]=w.get(t,0)+1; save_warns(w); SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"{t} warn {w[t]}/3"}); return "ok",200
             if text.startswith("/addadmin "):
-                t=text.split()[1]; extra=load_json(ADMINS_FILE, []); if t not in extra: extra.append(int(t)); save_json(ADMINS_FILE, extra); SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Admin {t} added"}); return "ok",200
+                t=text.split()[1]; extra=load_json(ADMINS_FILE, []); if int(t) not in extra: extra.append(int(t)); save_json(ADMINS_FILE, extra); SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Admin {t} added"}); return "ok",200
             if text.startswith("/deladmin "):
                 t=int(text.split()[1]); extra=load_json(ADMINS_FILE, []); extra=[x for x in extra if int(x)!=t]; save_json(ADMINS_FILE, extra); SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Admin {t} removed"}); return "ok",200
-            if text.startswith("/block ") or text.startswith("/unblock ") or text.startswith("/search ") or text.startswith("/deluser "):
-                if text.startswith("/block "):
-                    t=text.split()[1]; b=load_blocked(); b[t]="blocked"; save_blocked(b); SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"{t} diblokir"}); return "ok",200
-                if text.startswith("/unblock "):
-                    t=text.split()[1]; b=load_blocked(); b.pop(t,None); save_blocked(b); SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"{t} di-unblok"}); return "ok",200
-                if text.startswith("/search "):
-                    t=text.split()[1]; m=load_members(); info=m.get(t); 
-                    if info: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Found: {info}","reply_markup":{"inline_keyboard":[[{"text":"Detail","callback_data":f"admin_view_{t}"}]]}})
-                    else: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"Not found"})
-                    return "ok",200
-                if text.startswith("/deluser "):
-                    t=text.split()[1]; m=load_members(); m.pop(t,None); save_members(m); SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"{t} dihapus"}); return "ok",200
-
+            if text.startswith("/block "):
+                t=text.split()[1]; b=load_blocked(); b[t]="blocked"; save_blocked(b); SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"{t} diblokir"}); return "ok",200
+            if text.startswith("/unblock "):
+                t=text.split()[1]; b=load_blocked(); b.pop(t,None); save_blocked(b); SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"{t} di-unblok"}); return "ok",200
+            if text.startswith("/search "):
+                t=text.split()[1]; m=load_members(); info=m.get(t); 
+                if info: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Found: {info}","reply_markup":{"inline_keyboard":[[{"text":"Detail","callback_data":f"admin_view_{t}"}]]}})
+                else: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"Not found"})
+                return "ok",200
+            if text.startswith("/deluser "):
+                t=text.split()[1]; m=load_members(); m.pop(t,None); save_members(m); SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"{t} dihapus"}); return "ok",200
         if text.startswith(("/start","/menu")):
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":get_start_text(msg["from"].get("first_name","Jogja Lend")),"reply_markup":get_main_menu(chat_id)}); return "ok",200
-
         raw_caption = msg.get("caption") or msg.get("text") or ""
         if not raw_caption and "photo" not in msg: return "ok",200
         quotas=load_quota(); key=get_today_key(chat_id)
@@ -476,12 +430,12 @@ def handler():
         is_media="photo" in msg
         caption=add_hashtag(raw_caption)
         if is_media and quotas[key]["media"] >= g["limit_media"]:
-            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Limit reached Text {quotas[key]['text']}/{g['limit_text']} Media {quotas[key]['media']}/{g['limit_media']}","reply_markup":{"inline_keyboard":[[{"text":"Back to Menu","callback_data":"menu_main"}]]}}); return "ok",200
+            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Limit reached","reply_markup":{"inline_keyboard":[[{"text":"Back to Menu","callback_data":"menu_main"}]]}}); return "ok",200
         if not is_media and quotas[key]["text"] >= g["limit_text"]:
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Limit reached","reply_markup":{"inline_keyboard":[[{"text":"Back to Menu","callback_data":"menu_main"}]]}}); return "ok",200
         if is_media:
             fid=msg["photo"][-1]["file_id"]; r=SESSION.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={fid}").json()
-            fb=SESSION.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{r['result']['file_path']}").content; fb=add_watermark_fast(fb)
+            fb=SESSION.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{r['result']['file_path']}").content
             files={"photo":("menfess.jpg",fb,"image/jpeg")}
             res=SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id":CHANNEL_ID,"caption":caption}, files=files, timeout=30).json()
         else:
