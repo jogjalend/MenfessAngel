@@ -72,18 +72,18 @@ def get_start_text(chat_id, first_name="there"):
     mode = "𝖮𝖭" if on else "𝖮𝖥"
     safe_name = first_name if first_name else "there"
     return (
-        "●•●𝗠𝗘𝗡𝗙𝗘𝗦𝗦 𝗔𝗡𝗚𝗘𝗟 𝗕𝗢𝗧●•●\n"
-        "______________________________\n\n"
-        f"Hi {safe_name}!\n\n𝖯𝗋𝗈𝗆𝗈𝗍𝖾 𝗒𝗈𝗎𝗋 𝖺𝖼𝖼𝗈𝗎𝗇𝗍 𝗁𝖾𝗋𝖾\n\n"
-        "𝖯𝗎𝖻𝗅𝗂𝗌𝗁 𝗍𝗈:\n"
-        "- 𝖢𝗁𝖺𝗇𝗇𝖾𝗅: @menfessangel\n"
-        "- 𝖳𝗁𝗋𝖾𝖺𝖽𝗌: @jogjalend\n"
-        "- 𝖷: @jogjalendpm\n\n"
-        "𝖲𝗍𝖺𝗍𝗎𝗌:\n"
+        f"●•●𝗠𝗘𝗡𝗙𝗘𝗦𝗦 𝗔𝗡𝗚𝗘𝗟 𝗕𝗢𝗧●•●\n"
+        f"Hi {safe_name}!\n"
+        f"𝖯𝗋𝗈𝗆𝗈𝗍𝖾 𝗒𝗈𝗎𝗋 𝖺𝖼𝖼𝗈𝗎𝗇𝗍 𝗁𝖾𝗋𝖾\n\n"
+        f"𝖯𝗎𝖻𝗅𝗂𝗌𝗁 𝗍𝗈:\n"
+        f"- 𝖢𝗁𝖺𝗇𝗇𝖾𝗅: @menfessangel\n"
+        f"- 𝖳𝗁𝗋𝖾𝖺𝖽𝗌: @jogjalend\n"
+        f"- 𝖷: @jogjalendpm\n\n"
+        f"𝖲𝗍𝖺𝗍𝗎𝗌:\n"
         f"- 𝖳𝗁𝗋𝖾𝖺𝖽𝗌: {mode}\n"
-        "- 𝖱𝖾𝗌𝖾𝗍: 00:00 𝖶𝖨𝖡\n"
-        "- 𝖫𝗂𝗆𝗂𝗍: 5 𝗍𝖾𝗑𝗍𝗌 & 5 𝗆𝖾𝖽𝗂𝖺 / 𝖽𝖺𝗒\n\n"
-        "𝖳𝖺𝗉 𝖯𝗈𝗌𝗍 𝗍𝗈 𝗌𝗍𝖺𝗋𝗍!"
+        f"- 𝖱𝖾𝗌𝖾𝗍: 00:00 𝖶𝖨𝖡\n"
+        f"- 𝖫𝗂𝗆𝗂𝗍: 5 𝗍𝖾𝗑𝗍𝗌 & 5 𝗆𝖾𝖽𝗂𝖺 / 𝖽𝖺𝗒\n\n"
+        f"𝖳𝖺𝗉 𝖯𝗈𝗌𝗍 𝗍𝗈 𝗌𝗍𝖺𝗋𝗍!"
     )
 
 def get_main_menu(chat_id):
@@ -113,7 +113,7 @@ def get_admin_menu():
     ]}
 
 @app.route("/", methods=['GET'])
-def home(): return "Bot V31 Fixed Name",200
+def home(): return "Bot V32 Final Header",200
 @app.route("/", methods=['POST'])
 @app.route("/api/index.py", methods=['POST'])
 def handler():
@@ -195,7 +195,7 @@ def handler():
             else: quotas[key]["text"]+=1
             save_quota(quotas)
             on = is_threads_enabled(chat_id)
-            keterangan = f"𝖲𝗎𝖼𝖼𝖾𝗌𝖿𝗎𝗅𝗅𝗒 𝗉𝗈𝗌𝗍𝖾𝖽 𝗍𝗈 𝖳𝖾𝗅𝖾𝗀𝗋𝖺𝗆 & 𝖳𝗁𝗋𝖾𝖺𝖽𝗌 (𝖳𝗁𝗋𝖾𝖺𝖽𝗌 𝖮𝖭)" if on else f"𝖲𝗎𝖼𝖼𝖾𝗌𝗌𝖿𝗎𝗅𝗅𝗒 𝗉𝗈𝗌𝗍𝖾𝖽 𝗍𝗈 𝖳𝖾𝗅𝖾𝗀𝗋𝖺𝗆 𝗈𝗇𝗅𝗒 (𝖳𝗁𝗋𝖾𝖺𝖽𝗌 𝖮𝖥𝖥)"
+            keterangan = f"𝖲𝗎𝖼𝖾𝗌𝖿𝗎𝗅𝗅𝗒 𝗉𝗈𝗌𝗍𝖾𝖽 𝗍𝗈 𝖳𝖾𝗅𝖾𝗀𝗋𝖺𝗆 & 𝖳𝗁𝗋𝖾𝖺𝖽𝗌 (𝖳𝗁𝗋𝖾𝖺𝖽𝗌 𝖮𝖭)" if on else f"𝖲𝗎𝖼𝖼𝖾𝗌𝗌𝖿𝗎𝗅𝗅𝗒 𝗉𝗈𝗌𝗍𝖾𝖽 𝗍𝗈 𝖳𝖾𝗅𝖾𝗀𝗋𝖺𝗆 𝗈𝗇𝗅𝗒 (𝖳𝗁𝗋𝖾𝖺𝖽𝗌 𝖮𝖥𝖥)"
             success_text = f"𝖬𝖾𝗇𝖿𝖾𝗌𝗌 𝗌𝖾𝗇𝗍!\n𝖱𝖾𝗆𝖺𝗂𝗇𝗀 𝗊𝗎𝗈𝗍𝖺:\n𝖳𝖾𝗑𝗍: {quotas[key]['text']}/{LIMIT_TEXT}\n𝖬𝖾𝖽𝗂𝖺: {quotas[key]['media']}/{LIMIT_MEDIA}\n{keterangan}\n𝖩𝗈𝗂𝗇: @{CHANNEL_USERNAME}"
             tl = f"https://t.me/{CHANNEL_USERNAME}/{pid}"
             th = f"https://www.threads.net/@jogjalend"
