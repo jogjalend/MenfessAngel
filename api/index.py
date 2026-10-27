@@ -21,6 +21,7 @@ for p in ["logo.png","api/logo.png"]:
     if os.path.exists(p):
         try: LOGO_CACHE = Image.open(p).convert("RGBA"); break
         except: pass
+
 def load_json(path):
     try:
         if os.path.exists(path):
@@ -58,26 +59,61 @@ def add_watermark_fast(b):
         base = Image.open(io.BytesIO(b)).convert("RGBA")
         w,h = base.size
         logo = LOGO_CACHE.copy()
-        logo.thumbnail((int(w*0.20), int(w*0.20)), Image.LANCZOS)
-        pad = int(w*0.03)
+        logo.thumbnail((int(w*0.18), int(w*0.18)), Image.LANCZOS)
+        pad = int(w*0.035)
         base.paste(logo, (w-logo.width-pad, h-logo.height-pad), logo)
         out = io.BytesIO()
         base.convert("RGB").save(out, format="JPEG", quality=92, optimize=True)
         return out.getvalue()
     except: return b
+
 def get_start_text(chat_id):
     on = is_threads_enabled(chat_id)
-    mode = "ON ✅" if on else "OFF ❌"
-    return f"✨ 𝗠𝗲𝗻𝗳𝗲𝘀𝘀 𝗔𝗻𝗴𝗲𝗹 • 𝗢𝗳𝗳𝗶𝗰𝗶𝗮𝗹 ✨\n━━━━━━━━━━━━━━━━━━\n\nHi! Send your secret anonymously 💌\n\n📢 Publish to:\n├ Channel → @menfessangel\n├ Threads → @jogjalend [optional]\n└ X → @jogjalendpm [maintenance]\n\n⚙️ Status\n├ Threads: {mode}\n├ Reset: 00:00 WIB\n└ Limit: 5 texts & 5 media / day\n\n👇 Tap Post to start!"
+    mode = "OFF ❌"
+    if on: mode = "ON ✅"
+    # FORMAT CAKEP SESUAI REQUEST LU
+    return (
+        f"━━━━𝗠𝗲𝗻𝗳𝗲𝘀𝘀 𝗔𝗻𝗴𝗲𝗹 • 𝗢𝗳𝗳𝗶𝗰𝗶𝗮𝗹━━━━\n\n"
+        f"Hi! Send your secret anonymously 💌\n\n"
+        f"📢 Publish to:\n"
+        f"● Channel → @menfessangel\n"
+        f"● Threads → @jogjalend [optional]\n"
+        f"● X → @jogjalendpm [maintenance]\n\n"
+        f"● Status\n"
+        f"● Threads: {mode}\n"
+        f"● Reset: 00:00 WIB\n"
+        f"● Limit: 5 texts & 5 media / day\n\n"
+        f"👇 Tap Post to start!"
+    )
+
 def get_main_menu(chat_id):
     if is_admin(chat_id):
-        return {"inline_keyboard": [[{"text":"👤 My Profile","callback_data":"profil"}],[{"text":"📜 Rules","callback_data":"menu_rules"}, {"text":"📝 Post","callback_data":"menu_post"}],[{"text":"🧵 Threads Setting","callback_data":"menu_threads"}],[{"text":"👑 Admin Panel","callback_data":"admin_panel"}],[{"text":"📊 Stats","callback_data":"menu_stats"}, {"text":"ℹ️ Help","callback_data":"menu_help"}]]}
+        return {"inline_keyboard": [
+            [{"text":"👤 Profile","callback_data":"profil"}],
+            [{"text":"📜 Rules","callback_data":"menu_rules"}, {"text":"📝 Post","callback_data":"menu_post"}],
+            [{"text":"🧵 Threads","callback_data":"menu_threads"}],
+            [{"text":"👑 Admin","callback_data":"admin_panel"}],
+            [{"text":"📊 Stats","callback_data":"menu_stats"}, {"text":"ℹ️ Help","callback_data":"menu_help"}]
+        ]}
     else:
-        return {"inline_keyboard": [[{"text":"👤 My Profile","callback_data":"profil"}],[{"text":"📜 Rules","callback_data":"menu_rules"}, {"text":"📝 Post","callback_data":"menu_post"}],[{"text":"🧵 Threads Setting","callback_data":"menu_threads"}],[{"text":"📊 Stats","callback_data":"menu_stats"}, {"text":"ℹ️ Help","callback_data":"menu_help"}]]}
+        return {"inline_keyboard": [
+            [{"text":"👤 Profile","callback_data":"profil"}],
+            [{"text":"📜 Rules","callback_data":"menu_rules"}, {"text":"📝 Post","callback_data":"menu_post"}],
+            [{"text":"🧵 Threads","callback_data":"menu_threads"}],
+            [{"text":"📊 Stats","callback_data":"menu_stats"}, {"text":"ℹ️ Help","callback_data":"menu_help"}]
+        ]}
+
 def get_admin_menu():
-    return {"inline_keyboard": [[{"text":"🚫 Block","callback_data":"admin_block"}, {"text":"✅ Unblock","callback_data":"admin_unblock"}],[{"text":"👥 Members","callback_data":"admin_members"}, {"text":"📋 Blocked","callback_data":"admin_blocked"}],[{"text":"🗑️ Del Member","callback_data":"admin_del_member"}, {"text":"🔄 Reset","callback_data":"admin_reset"}],[{"text":"📢 Broadcast","callback_data":"admin_broadcast"}, {"text":"📊 Global","callback_data":"admin_stats"}],[{"text":"🔙 Back","callback_data":"menu_main"}]]}
+    return {"inline_keyboard": [
+        [{"text":"🚫 Block","callback_data":"admin_block"}, {"text":"✅ Unblock","callback_data":"admin_unblock"}],
+        [{"text":"👥 Members","callback_data":"admin_members"}, {"text":"📋 Blocked","callback_data":"admin_blocked"}],
+        [{"text":"🗑️ Del Member","callback_data":"admin_del_member"}, {"text":"🔄 Reset","callback_data":"admin_reset"}],
+        [{"text":"📢 Broadcast","callback_data":"admin_broadcast"}, {"text":"📊 Global","callback_data":"admin_stats"}],
+        [{"text":"🔙 Back","callback_data":"menu_main"}]
+    ]}
+
 @app.route("/", methods=['GET'])
-def home(): return "Bot V25 Beautiful",200
+def home(): return "Bot V27 Cakep Header",200
 @app.route("/", methods=['POST'])
 @app.route("/api/index.py", methods=['POST'])
 def handler():
@@ -103,22 +139,22 @@ def handler():
             elif cb_data == "admin_panel":
                 if not is_admin(chat_id): return "ok",200
                 m = load_members(); b = load_blocked()
-                txt = f"👑 ADMIN PANEL\n━━━━━━━━━━\n👥 Members: {len(m)}\n🚫 Blocked: {len(b)}"
+                txt = f"ADMIN PANEL\n━━━━━━\nMembers: {len(m)}\nBlocked: {len(b)}"
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":get_admin_menu()})
                 return "ok",200
             elif cb_data in ["profil","menu_threads","toggle_threads"]:
                 if cb_data == "toggle_threads": set_threads_enabled(chat_id, not is_threads_enabled(chat_id))
                 q = load_quota().get(get_today_key(chat_id), {"text":0,"media":0})
                 on = is_threads_enabled(chat_id)
-                txt = f"👤 My Profile\n━━━━━━━━━━\nID: {chat_id}\nText: {q['text']}/{LIMIT_TEXT}\nMedia: {q['media']}/{LIMIT_MEDIA}\nThreads: {'ON ✅' if on else 'OFF ❌'}"
-                kb = {"inline_keyboard": [[{"text": f"Threads: {'ON ✅' if on else 'OFF ❌'}","callback_data":"toggle_threads"}],[{"text":"🔙 Back","callback_data":"menu_main"}]]}
+                txt = f"My Profile\n━━━━━━\nID: {chat_id}\nText: {q['text']}/{LIMIT_TEXT}\nMedia: {q['media']}/{LIMIT_MEDIA}\nThreads: {'ON ✅' if on else 'OFF ❌'}"
+                kb = {"inline_keyboard": [[{"text": f"Threads: {'ON ✅' if on else 'OFF ❌'}","callback_data":"toggle_threads"}],[{"text":"Back","callback_data":"menu_main"}]]}
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":kb})
                 return "ok",200
             else:
-                txts = {"menu_post":"📝 Post Menfess\nJust send text or photo directly!","menu_rules":"📜 Rules\n1. No Spam\n2. No SARA\n3. No Doxxing","menu_help":"ℹ️ Help\n/start - Main menu","admin_block":"🚫 /block 123","admin_unblock":"✅ /unblock 123"}
-                txt = txts.get(cb_data, f"📊 {load_quota().get(get_today_key(chat_id), {'text':0,'media':0})}")
+                txts = {"menu_post":"Post Menfess\nJust send text or photo directly!","menu_rules":"Rules:\n1. No Spam\n2. No SARA\n3. No Doxxing\n4. No NSFW","menu_help":"Help:\n/start - Main menu"}
+                txt = txts.get(cb_data, "Stats")
                 if cb_data == "admin_reset": save_quota({}); txt="✅ Quota reset!"
-                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":{"inline_keyboard":[[{"text":"🔙 Back","callback_data":"menu_main"}]]}})
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"menu_main"}]]}})
                 return "ok",200
         if "message" not in data: return "ok",200
         msg = data["message"]; chat_id = msg["chat"]["id"]; text = msg.get("text","")
@@ -127,8 +163,7 @@ def handler():
             members[str(chat_id)] = {"username": msg["from"].get("username","-"), "name": msg["from"].get("first_name","-"), "joined": datetime.now(WIB).strftime("%Y-%m-%d %H:%M")}
             save_members(members)
         if is_blocked(chat_id) and not is_admin(chat_id):
-            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"🚫 You are blocked"})
-            return "ok",200
+            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"🚫 You are blocked"}); return "ok",200
         if is_admin(chat_id) and text.startswith("/block "): 
             t=text.split()[1]; b=load_blocked(); b[t]=f"blocked"; save_blocked(b)
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"✅ {t} blocked"}); return "ok",200
@@ -158,7 +193,7 @@ def handler():
             else: quotas[key]["text"]+=1
             save_quota(quotas)
             on = is_threads_enabled(chat_id)
-            keterangan = f"Successfully posted to Telegram & Threads (Threads ON)\nJoin Channel : @{CHANNEL_USERNAME}" if on else f"Successfully posted to Telegram only (Threads OFF)\nJoin Channel : @{CHANNEL_USERNAME}"
+            keterangan = f"Successfully posted to Telegram & Threads (Threads ON)\nJoin Channel: @{CHANNEL_USERNAME}" if on else f"Successfully posted to Telegram only (Threads OFF)\nJoin Channel: @{CHANNEL_USERNAME}"
             success_text = f"Menfess sent!\nRemaining quota:\nText : {quotas[key]['text']}/{LIMIT_TEXT}\nMedia : {quotas[key]['media']}/{LIMIT_MEDIA}\n{keterangan}"
             tl = f"https://t.me/{CHANNEL_USERNAME}/{pid}"
             th = f"https://www.threads.net/@jogjalend"
