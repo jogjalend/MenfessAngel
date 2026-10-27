@@ -36,10 +36,9 @@ def save_members(d): save_json(MEMBERS_FILE, d)
 def load_global():
     g = load_json(GLOBAL_FILE, {})
     if not g: g = {"hashtag":"\n\n#jogjalend","limit_text":5,"limit_media":5,"welcome":"Hi {name}!\nPromote your account here!\n______________________________________\n\nPublish to:\n- Channel -> @menfessangel\n- Threads -> @jogjalend [optional]\n- X -> @jogjalendpm [maintenance]\n\nTap Post to start!"}
-    if "welcome" not in g: g["welcome"]="Hi {name}!\nPromote your account here!\n______________________________________\n\nPublish to:\n- Channel -> @menfessangel\n- Threads -> @jogjalend [optional]\n- X -> @jogjalendpm [maintenance]\n\nTap Post to start!"
+    if "welcome" not in g: g["welcome"]="Hi {name}!"
     return g
 def save_global(d): save_json(GLOBAL_FILE, d)
-
 def is_admin(chat_id): return int(chat_id) in ADMIN_IDS
 def is_blocked(chat_id): return str(chat_id) in load_blocked()
 def is_threads_enabled(chat_id): return load_settings().get(str(chat_id),{}).get("threads", False)
@@ -50,8 +49,7 @@ def set_threads_enabled(chat_id, v):
     save_settings(s)
 def get_today_key(chat_id): return f"{chat_id}_{datetime.now(WIB).strftime('%Y-%m-%d')}"
 def add_hashtag(text):
-    g = load_global()
-    ht = g.get("hashtag","")
+    g = load_global(); ht = g.get("hashtag","")
     if not text: return ht.strip()
     if "jogjalend" in text.lower(): return text
     return text.strip() + ht
@@ -62,9 +60,7 @@ def get_real_channel_count():
     except: pass
     return 659
 def get_start_text(first_name="Jogja Lend"):
-    g=load_global()
-    w=g.get("welcome","Hi {name}!")
-    return w.replace("{name}",first_name)
+    g=load_global(); w=g.get("welcome","Hi {name}!"); return w.replace("{name}",first_name)
 def get_main_menu(chat_id):
     if is_admin(chat_id):
         return {"inline_keyboard": [
@@ -81,23 +77,30 @@ def get_main_menu(chat_id):
             [{"text":"Threads Setting","callback_data":"menu_threads"}],
             [{"text":"Stats","callback_data":"menu_stats"}, {"text":"Help","callback_data":"menu_help"}]
         ]}
-def delete_and_send_menu(chat_id, msg_id, first_name):
+
+def safe_send(chat_id, msg_id, text, reply_markup):
+    # UNIVERSAL BACK FIX - coba edit, gagal -> delete + send baru
+    try:
+        r = SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":text,"reply_markup":reply_markup}, timeout=10).json()
+        if r.get("ok"): return True
+    except: pass
     try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":chat_id,"message_id":msg_id}, timeout=5)
     except: pass
-    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":get_start_text(first_name),"reply_markup":get_main_menu(chat_id)})
+    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":text,"reply_markup":reply_markup}, timeout=10)
+    return True
+
 def make_avatar_bytes(name):
     try:
         initial = (name or "J")[0].upper()
         img = Image.new('RGB', (800, 800), color=(29, 155, 240))
-        draw = ImageDraw.Draw(img)
-        draw.ellipse((100, 100, 700, 700), fill=(255,255,255))
+        draw = ImageDraw.Draw(img); draw.ellipse((100, 100, 700, 700), fill=(255,255,255))
         try: font = ImageFont.truetype("DejaVuSans-Bold.ttf", 350)
         except: font = ImageFont.load_default()
-        bbox = draw.textbbox((0,0), initial, font=font)
-        w = bbox[2]-bbox[0]; h = bbox[3]-bbox[1]
+        bbox = draw.textbbox((0,0), initial, font=font); w = bbox[2]-bbox[0]; h = bbox[3]-bbox[1]
         draw.text(((800-w)/2, (800-h)/2 - 20), initial, fill=(29,155,240), font=font)
         buf = io.BytesIO(); img.save(buf, format='JPEG', quality=90); buf.seek(0); return buf.getvalue()
     except: return None
+
 def send_profile_with_photo(chat_id, msg_id, user_first):
     try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":chat_id,"message_id":msg_id})
     except: pass
@@ -119,7 +122,7 @@ def send_profile_with_photo(chat_id, msg_id, user_first):
     else: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":caption,"reply_markup":kb})
 
 @app.route("/", methods=['GET'])
-def home(): return "Bot V48.3 Admin 8 Menu",200
+def home(): return "Bot V48.4 All Back Fixed",200
 @app.route("/", methods=['POST'])
 @app.route("/api/index.py", methods=['POST'])
 def handler():
@@ -129,17 +132,46 @@ def handler():
         if "callback_query" in data:
             cq = data["callback_query"]; cb_data = cq["data"]; chat_id = cq["message"]["chat"]["id"]; msg_id = cq["message"]["message_id"]; user_first = cq["from"].get("first_name","Jogja Lend")
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id":cq["id"]})
-            if cb_data in ["menu_main"]: delete_and_send_menu(chat_id, msg_id, user_first); return "ok",200
-            if cb_data in ["profil","toggle_threads","menu_threads"]:
+
+            # === SEMUA BACK FIX ===
+            if cb_data in ["menu_main", "back_main", "back"]:
+                try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":chat_id,"message_id":msg_id}, timeout=5)
+                except: pass
+                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":get_start_text(user_first),"reply_markup":get_main_menu(chat_id)})
+                return "ok",200
+
+            if cb_data in ["profil","toggle_threads"]:
                 if cb_data == "toggle_threads": set_threads_enabled(chat_id, not is_threads_enabled(chat_id))
                 send_profile_with_photo(chat_id, msg_id, user_first); return "ok",200
+
+            if cb_data == "menu_threads":
+                on = is_threads_enabled(chat_id)
+                txt = f"Threads Setting\n______________________________________\n\nStatus: {'ON' if on else 'OFF'}\n\nJika ON, menfess juga dipost ke Threads (optional)"
+                kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if on else 'OFF'}","callback_data":"toggle_threads"}],[{"text":"Back","callback_data":"menu_main"}]]}
+                safe_send(chat_id, msg_id, txt, kb); return "ok",200
+
+            if cb_data == "menu_rules":
+                txt = "Rules\n______________________________________\n\n1. No Spam\n2. No SARA\n3. No Doxxing\n4. No Promosi Ilegal\n5. No Porn"
+                kb = {"inline_keyboard":[[{"text":"Back","callback_data":"menu_main"}]]}
+                safe_send(chat_id, msg_id, txt, kb); return "ok",200
+
+            if cb_data == "menu_post":
+                txt = "Post Menfess\n______________________________________\n\nJust send text or photo!\n\nCaption auto tambah #jogjalend"
+                kb = {"inline_keyboard":[[{"text":"Back","callback_data":"menu_main"}]]}
+                safe_send(chat_id, msg_id, txt, kb); return "ok",200
+
+            if cb_data == "menu_help":
+                txt = "Help\n______________________________________\n\n/start - Menu utama\nKirim text/photo - Post menfess\nQuota 5 text + 5 media per hari"
+                kb = {"inline_keyboard":[[{"text":"Back","callback_data":"menu_main"}]]}
+                safe_send(chat_id, msg_id, txt, kb); return "ok",200
+
             if cb_data == "menu_stats":
                 real = get_real_channel_count(); m = load_members(); b = load_blocked(); q = load_quota()
                 total = sum(v.get("text",0)+v.get("media",0) for v in q.values())
                 txt = f"STATS\n______________________________________\n\nChannel Subs: {real}\nBot Users: {len(m)}\nBlocked: {len(b)}\nTotal Posts: {total}\nDate: {datetime.now(WIB).strftime('%Y-%m-%d')}"
-                try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":chat_id,"message_id":msg_id})
-                except: pass
-                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt,"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"menu_main"}]]}}); return "ok",200
+                kb = {"inline_keyboard":[[{"text":"Back","callback_data":"menu_main"}]]}
+                safe_send(chat_id, msg_id, txt, kb); return "ok",200
+
             if cb_data == "admin_panel":
                 if not is_admin(chat_id): return "ok",200
                 real = get_real_channel_count(); m = load_members(); b = load_blocked(); q = load_quota(); g = load_global()
@@ -154,40 +186,25 @@ def handler():
                     [{"text":"6. Blok Username","callback_data":"admin_blockuser"}],
                     [{"text":"7. Broadcast","callback_data":"admin_broadcast"}],
                     [{"text":"8. Setting Welcome","callback_data":"admin_welcome"}],
-                    [{"text":"Back","callback_data":"menu_main"}]
+                    [{"text":"⬅️ Back to Main","callback_data":"menu_main"}]
                 ]}
-                try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":kb})
-                except: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt,"reply_markup":kb})
-                return "ok",200
-            
-            # 8 MENU HANDLER
+                safe_send(chat_id, msg_id, txt, kb); return "ok",200
+
+            # ADMIN 8 MENU - SEMUA ADA BACK KE ADMIN PANEL
             g=load_global(); real=get_real_channel_count()
-            if cb_data=="admin_real_count":
-                txt=f"1. Real Count\n\nChannel @{CHANNEL_USERNAME}: {real} subs LIVE\nID: {CHANNEL_ID}"
+            back_admin = {"inline_keyboard":[[{"text":"⬅️ Back","callback_data":"admin_panel"}]]}
+            if cb_data=="admin_real_count": txt=f"1. Real Count\n\nChannel @{CHANNEL_USERNAME}: {real} subs LIVE\nID: {CHANNEL_ID}"; safe_send(chat_id, msg_id, txt, back_admin); return "ok",200
             elif cb_data=="admin_members":
                 m=load_members(); txt="2. All Users (20 terbaru)\n"+"\n".join([f"{v.get('name','-')} {k} @{v.get('username','-')}" for k,v in list(m.items())[-20:]]) or "0 user"
+                safe_send(chat_id, msg_id, txt, back_admin); return "ok",200
             elif cb_data=="admin_blocked":
                 b=load_blocked(); txt=f"3. Blocked List {len(b)}\n"+"\n".join(b.keys()) or "Kosong\nKetik /block ID atau /block @username"
-            elif cb_data=="admin_search":
-                txt="4. Search User\n\nKetik:\n/search 123456\n/search @username\n/search nama"
-            elif cb_data=="admin_setquota":
-                txt=f"5. Set Quota\nSekarang: {g['limit_text']}/{g['limit_media']}\n\nKetik:\n/setquota 5 5\nContoh: /setquota 10 10"
-            elif cb_data=="admin_blockuser":
-                txt="6. Blok Username\n\nKetik:\n/block 123456789\n/block @username\n/unblock 123456789\n/unblock @username\n\nBisa blok by ID atau username"
-            elif cb_data=="admin_broadcast":
-                txt="7. Broadcast\n\nKetik:\n/broadcast Pesan lu untuk 659 users\n\nContoh:\n/broadcast Halo guys, ada update baru!"
-            elif cb_data=="admin_welcome":
-                txt=f"8. Setting Welcome\n\nSekarang:\n{g.get('welcome','')}\n\nKetik:\n/setwelcome Hi {{name}}! Welcome!\nGunakan {{name}} buat nama user"
-            else:
-                txts = {"menu_post":"Post Menfess\nJust send text or photo!","menu_rules":"Rules:\n1. No Spam\n2. No SARA\n3. No Doxxing","menu_help":"Help: /start"}
-                txt = txts.get(cb_data, "Menu")
-            
-            try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json={"chat_id":chat_id,"message_id":msg_id,"text":txt,"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"admin_panel"}]]}})
-            except: 
-                try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id":chat_id,"message_id":msg_id})
-                except: pass
-                SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt,"reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"admin_panel"}]]}})
-            return "ok",200
+                safe_send(chat_id, msg_id, txt, back_admin); return "ok",200
+            elif cb_data=="admin_search": txt="4. Search User\n\nKetik:\n/search 123456\n/search @username\n/search nama"; safe_send(chat_id, msg_id, txt, back_admin); return "ok",200
+            elif cb_data=="admin_setquota": txt=f"5. Set Quota\nSekarang: {g['limit_text']}/{g['limit_media']}\n\nKetik:\n/setquota 5 5"; safe_send(chat_id, msg_id, txt, back_admin); return "ok",200
+            elif cb_data=="admin_blockuser": txt="6. Blok Username\n\nKetik:\n/block 123456789\n/block @username\n/unblock @username"; safe_send(chat_id, msg_id, txt, back_admin); return "ok",200
+            elif cb_data=="admin_broadcast": txt="7. Broadcast\n\nKetik:\n/broadcast Pesan lu\nContoh: /broadcast Halo!"; safe_send(chat_id, msg_id, txt, back_admin); return "ok",200
+            elif cb_data=="admin_welcome": txt=f"8. Setting Welcome\n\nSekarang:\n{g.get('welcome','')}\n\nKetik:\n/setwelcome Hi {{name}}! Welcome!"; safe_send(chat_id, msg_id, txt, back_admin); return "ok",200
 
         if "message" not in data: return "ok",200
         msg = data["message"]; chat_id = msg["chat"]["id"]; text = msg.get("text","")
@@ -198,57 +215,48 @@ def handler():
         if is_blocked(chat_id) and not is_admin(chat_id):
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"You are blocked"}); return "ok",200
         
-        # ADMIN COMMANDS
         if is_admin(chat_id) and text.startswith("/"):
             if text.startswith("/block "):
                 target=text.split()[1].replace("@",""); blocked=load_blocked(); members=load_members()
-                # cari by username jika pakai @
                 if not target.isdigit():
                     for uid, info in members.items():
                         if info.get("username","").lower()==target.lower() or target.lower() in info.get("username","").lower():
                             blocked[uid]=f"@{info.get('username','-')}"; save_blocked(blocked)
                             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Blocked {uid} @{info.get('username','-')}"}); return "ok",200
-                    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Username @{target} tidak ditemukan di bot users"}); return "ok",200
+                    SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Username @{target} tidak ditemukan"}); return "ok",200
                 else:
                     blocked[target]="ID"; save_blocked(blocked)
                     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"{target} blocked"}); return "ok",200
-            
             if text.startswith("/unblock "):
                 target=text.split()[1].replace("@",""); blocked=load_blocked(); members=load_members()
                 if not target.isdigit():
                     to_remove=[]
                     for uid, info in members.items():
-                        if target.lower() in info.get("username","").lower():
-                            to_remove.append(uid)
+                        if target.lower() in info.get("username","").lower(): to_remove.append(uid)
                     for uid in to_remove: blocked.pop(uid,None)
                     save_blocked(blocked)
                     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Unblocked {len(to_remove)} user @{target}"}); return "ok",200
                 else:
                     blocked.pop(target,None); save_blocked(blocked)
                     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"{target} unblocked"}); return "ok",200
-
             if text.startswith("/setquota "):
                 try:
                     p=text.split(); g=load_global(); g["limit_text"]=int(p[1]); g["limit_media"]=int(p[2]); save_global(g)
                     SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Quota set {p[1]}/{p[2]}"}); return "ok",200
                 except: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":"Format: /setquota 5 5"}); return "ok",200
-            
             if text.startswith("/setwelcome "):
                 w=text.replace("/setwelcome ","").strip(); g=load_global(); g["welcome"]=w; save_global(g)
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Welcome set:\n{w}"}); return "ok",200
-
             if text.startswith("/search "):
                 q=text.split()[1]; m=load_members(); found=[f"{v.get('name','-')} {k} @{v.get('username','-')}" for k,v in m.items() if q in k or q.lower() in v.get('username','').lower() or q.lower() in v.get('name','').lower()]
                 txt="Hasil:\n"+"\n".join(found[:20]) if found else "Not found"
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":txt}); return "ok",200
-
             if text.startswith("/broadcast "):
                 pesan=text.replace("/broadcast ",""); m=load_members(); cnt=0
                 for uid in m.keys():
                     try: SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":uid,"text":f"📢 Broadcast:\n{pesan}"},timeout=5); cnt+=1
                     except: pass
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Broadcast ke {cnt} users selesai"}); return "ok",200
-
             if text.startswith("/sethashtag "):
                 h=text.replace("/sethashtag ","").strip(); g=load_global(); g["hashtag"]= "" if h=="off" else "\n\n"+h; save_global(g)
                 SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Hashtag set {h}"}); return "ok",200
@@ -268,9 +276,9 @@ def handler():
         if key not in quotas: quotas[key] = {"text":0,"media":0}
         g = load_global(); is_media = "photo" in msg; caption = add_hashtag(raw_caption)
         if is_media and quotas[key]["media"] >= g["limit_media"]:
-            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Limit reached {g['limit_media']}/hari","reply_markup":{"inline_keyboard":[[{"text":"Back to Menu","callback_data":"menu_main"}]]}}); return "ok",200
+            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Limit reached {g['limit_media']}/hari","reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"menu_main"}]]}}); return "ok",200
         if not is_media and quotas[key]["text"] >= g["limit_text"]:
-            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Limit reached {g['limit_text']}/hari","reply_markup":{"inline_keyboard":[[{"text":"Back to Menu","callback_data":"menu_main"}]]}}); return "ok",200
+            SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Limit reached {g['limit_text']}/hari","reply_markup":{"inline_keyboard":[[{"text":"Back","callback_data":"menu_main"}]]}}); return "ok",200
         if is_media:
             fid = msg["photo"][-1]["file_id"]; r = SESSION.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={fid}").json()
             fb = SESSION.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{r['result']['file_path']}").content
@@ -283,7 +291,7 @@ def handler():
             else: quotas[key]["text"]+=1
             save_quota(quotas)
             tl = f"https://t.me/{CHANNEL_USERNAME}/{pid}"
-            btn = {"inline_keyboard": [[{"text":"See on channel","url":tl}],[{"text":"Back to Menu","callback_data":"menu_main"}]]}
+            btn = {"inline_keyboard": [[{"text":"See on channel","url":tl}],[{"text":"Back","callback_data":"menu_main"}]]}
             SESSION.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id":chat_id,"text":f"Menfess sent! Quota {quotas[key]['text']}/{g['limit_text']} {quotas[key]['media']}/{g['limit_media']}","reply_markup":btn})
     except Exception as e: print(e)
     return "ok",200
