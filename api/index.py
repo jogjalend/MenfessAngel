@@ -9,7 +9,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID") or "@menfessangel"
 ADMIN_ID = os.getenv("ADMIN_ID") or ""
 WIB = timezone(timedelta(hours=7))
-SEP = "──────────────────────────"  # PENDEK BIAR GAK TRIGGER TRANSLATE
+SEP = "────────"
 USERS = defaultdict(lambda: {"name": "", "username": "", "threads_user": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "await_threads": False})
 HASHTAG = "#jogjalend"
 
@@ -95,7 +95,7 @@ Posted to {'Telegram + Threads' if user['threads_on'] else 'Telegram'}"""
 @app.route("/", methods=["GET"])
 @app.route("/api/index", methods=["GET","POST"])
 def index():
-    if request.method=="GET": return "V76 DASHBOARD CLEAN + STATS IMAGE LIVE",200
+    if request.method=="GET": return "V79 VERIFICATION TITLE LIVE",200
     data = request.get_json(force=True, silent=True) or {}
     
     if "message" in data:
@@ -105,9 +105,8 @@ def index():
             user["username"]=msg["from"].get("username","")
 
         if text.startswith("/start"):
-            kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Rules", "callback_data": "rules"}, {"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
+            kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Verification", "callback_data": "verification"}, {"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
             if is_admin(chat_id): kb["inline_keyboard"].append([{"text": "🔐 ADMIN PANEL", "callback_data": "admin_panel"}])
-            # DASHBOARD CLEAN KAYAK SCREENSHOT LU - TEXT DOANG, GAK PAKE GAMBAR
             caption_txt = f"""Hi {user['name']}!
 
 {SEP}
@@ -184,7 +183,31 @@ Threads: {'ON' if user['threads_on'] else 'OFF'}"""
             else:
                 send(chat_id, caption_txt, back_kb())
 
-        elif cdata=="rules": send(chat_id, f"Rules\n{SEP}\n1. No SARA, porn, spam\n2. No doxxing\n3. Limit 5/hari", back_kb())
+        elif cdata in ["rules", "verification"]: 
+            rules_text = f"""📋 Verification - How to Join JogjaLend
+{SEP}
+
+Entering JogjaLend Telegram group requires special verification to ensure seriousness in joining JogjaLend group.
+To avoid joining and leaving the group as you please.
+
+𝙍𝙚𝙦𝙪𝙞𝙧𝙚𝙢𝙚𝙣𝙩𝙨 𝙩𝙤 𝙅𝙤𝙞𝙣 JogjaLend:
+
+1. Create a Telegram username
+(How to create can be searched on Google)
+
+2. As a guarantee of seriousness to join JogjaLend forum, please choose ONE of the following verification methods:
+
+   - Open Donate 100.000 and for donate method can be via EWALLET & BANK.
+
+   - Complete the registration form from @jogja_lend
+
+3. Willing to comply with all rules in JogjaLend
+
+{SEP}
+
+Contact Admin: @jogja_lend"""
+            send(chat_id, rules_text, back_kb())
+
         elif cdata=="post": send(chat_id, f"Post Menfess\n{SEP}\nKirim text/foto/video sekarang\nAuto watermark + {HASHTAG}", back_kb())
         elif cdata=="threads":
             kb={"inline_keyboard": [[{"text": "ON ✅", "callback_data": "threads_on"}, {"text": "OFF ❌", "callback_data": "threads_off"}], [{"text": "Set Username", "callback_data": "threads_set"}], [{"text": "« Back", "callback_data": "back_home"}]]}
@@ -192,15 +215,12 @@ Threads: {'ON' if user['threads_on'] else 'OFF'}"""
         elif cdata=="threads_on": user["threads_on"]=True; send(chat_id, f"Threads: ON\n{SEP}\nEnabled", back_kb())
         elif cdata=="threads_off": user["threads_on"]=False; send(chat_id, f"Threads: OFF\n{SEP}\nDisabled", back_kb())
         elif cdata=="threads_set": user["await_threads"]=True; send(chat_id, f"Send @username\n{SEP}\nEx: @jogjalend or -", back_kb())
-
         elif cdata=="stats":
-            # INI YANG ADA GAMBAR AKTIVITAS CHANNEL
             channel_photo_id, members, title = get_channel_info()
             total_t = sum(u["today_text"] for u in USERS.values())
             total_m = sum(u["today_media"] for u in USERS.values())
             all_t = sum(u["total_text"] for u in USERS.values())
             all_m = sum(u["total_media"] for u in USERS.values())
-            
             caption_txt = f"""Stats - {title}
 {SEP}
 📈 Channel Activity:
@@ -213,7 +233,6 @@ Total: {all_t} text, {all_m} media
 Today: {user['today_text']}/5 text, {user['today_media']}/5 media
 Total: {user['total_text']} text, {user['total_media']} media
 Channel: {CHANNEL_ID}"""
-
             if channel_photo_id:
                 content = download_file(channel_photo_id)
                 if content:
@@ -234,10 +253,9 @@ Channel: {CHANNEL_ID}"""
                         send(chat_id, caption_txt, back_kb())
                 else:
                     send(chat_id, caption_txt, back_kb())
-
         elif cdata=="help": send(chat_id, f"Help\n{SEP}\nChannel: @menfessangel\nAdmin: @jogjalend", back_kb())
         elif cdata=="back_home":
-            kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Rules", "callback_data": "rules"}, {"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
+            kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Verification", "callback_data": "verification"}, {"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
             if is_admin(chat_id): kb["inline_keyboard"].append([{"text": "🔐 ADMIN PANEL", "callback_data": "admin_panel"}])
             caption_txt = f"""Hi {user['name']}!
 
@@ -256,7 +274,6 @@ Tap Post to start!"""
                 try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id": CHANNEL_ID, "message_id": int(mid)})
                 except: pass
             send(chat_id, f"Deleted\n{SEP}\nRemoved", back_kb())
-
         if cdata=="admin_panel" and is_admin(chat_id):
             total_t=sum(u["today_text"] for u in USERS.values()); total_m=sum(u["today_media"] for u in USERS.values())
             kb={"inline_keyboard": [[{"text": f"👥 {len(USERS)} Users", "callback_data": "admin_users"}, {"text": f"📈 {total_t}T {total_m}M", "callback_data": "admin_stats"}], [{"text": "📢 Broadcast", "callback_data": "admin_bc"}, {"text": "📋 List", "callback_data": "admin_list"}], [{"text": "🔄 Reset", "callback_data": "admin_reset"}, {"text": "🚫 Banned", "callback_data": "admin_banlist"}], [{"text": "« Back", "callback_data": "back_home"}]]}
@@ -266,5 +283,4 @@ Tap Post to start!"""
                 for u in USERS.values(): u["today_text"]=0; u["today_media"]=0
                 send(chat_id, f"Reset done\n{SEP}\nAll limits 0", back_kb())
             else: send(chat_id, f"Admin\n{SEP}\nDone", back_kb())
-
     return "ok",200
