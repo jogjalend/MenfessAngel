@@ -9,7 +9,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID") or "@menfessangel"
 ADMIN_ID = os.getenv("ADMIN_ID") or ""
 WIB = timezone(timedelta(hours=7))
-SEP = "_______________________________"
+SEP = "────────────────────"
 USERS = defaultdict(lambda: {"name": "", "username": "", "threads_user": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "await_threads": False})
 HASHTAG = "#jogjalend"
 
@@ -63,6 +63,7 @@ def back_kb(): return {"inline_keyboard": [[{"text": "« Back", "callback_data":
 def send_success(chat_id, user, ch_msg_id):
     reply=f"""Menfess sent!
 {SEP}
+
 Remaining quota:
 Text : {user['today_text']}/5
 Media : {user['today_media']}/5
@@ -80,7 +81,7 @@ Join Channel : {CHANNEL_ID}"""
 @app.route("/", methods=["GET"])
 @app.route("/api/index", methods=["GET","POST"])
 def index():
-    if request.method=="GET": return "V67 ALL MENU PEMBATAS + LOGO + #jogjalend LIVE",200
+    if request.method=="GET": return "V70 1 SEP + LOGO KANAN + #jogjalend LIVE",200
     data = request.get_json(force=True, silent=True) or {}
     
     if "message" in data:
@@ -101,28 +102,26 @@ Publish to:
 - Threads -> @jogjalend [optional]
 - X -> @jogjalendpm [maintenance]
 
-{SEP}
-
 Tap Post to start!""", kb)
         elif text.startswith("/broadcast ") and is_admin(chat_id):
             bc=text.replace("/broadcast ","")
             cnt=0
             for uid2 in list(USERS.keys()):
-                try: send(uid2, f"📢 Broadcast\n\n{SEP}\n\n{bc}"); cnt+=1
+                try: send(uid2, f"📢 Broadcast\n{SEP}\n\n{bc}"); cnt+=1
                 except: pass
-            send(chat_id, f"✅ Broadcast ke {cnt} user\n\n{SEP}", back_kb())
+            send(chat_id, f"✅ Broadcast ke {cnt} user\n{SEP}\nDone", back_kb())
         elif text.startswith("/ban ") and is_admin(chat_id):
-            try: USERS[text.split()[1]]["banned"]=True; send(chat_id, f"🚫 Banned\n\n{SEP}", back_kb())
-            except: send(chat_id, f"Format /ban ID\n\n{SEP}", back_kb())
+            try: USERS[text.split()[1]]["banned"]=True; send(chat_id, f"🚫 Banned\n{SEP}\nUser banned", back_kb())
+            except: send(chat_id, f"Format /ban ID\n{SEP}\nEx: /ban 123456", back_kb())
         elif text.startswith("/unban ") and is_admin(chat_id):
-            try: USERS[text.split()[1]]["banned"]=False; send(chat_id, f"✅ Unbanned\n\n{SEP}", back_kb())
-            except: send(chat_id, f"Format /unban ID\n\n{SEP}", back_kb())
+            try: USERS[text.split()[1]]["banned"]=False; send(chat_id, f"✅ Unbanned\n{SEP}\nUser unbanned", back_kb())
+            except: send(chat_id, f"Format /unban ID", back_kb())
         elif not user["banned"]:
             if user.get("await_threads") and text and not text.startswith("/"):
-                if text.strip()=="-": user["threads_user"]=""; user["threads_on"]=False; user["await_threads"]=False; send(chat_id, f"✅ Threads OFF\n\n{SEP}", back_kb())
-                elif text.startswith("@"): user["threads_user"]=text.strip(); user["threads_on"]=True; user["await_threads"]=False; send(chat_id, f"✅ Threads set to {text} (ON)\n\n{SEP}", back_kb())
+                if text.strip()=="-": user["threads_user"]=""; user["threads_on"]=False; user["await_threads"]=False; send(chat_id, f"✅ Threads OFF\n{SEP}\nRemoved", back_kb())
+                elif text.startswith("@"): user["threads_user"]=text.strip(); user["threads_on"]=True; user["await_threads"]=False; send(chat_id, f"✅ Threads set to {text}\n{SEP}\nON", back_kb())
             elif text and not text.startswith("/") and len(text)>=3:
-                if user["today_text"]>=5: send(chat_id, f"⚠️ Text limit 5/5 reached. Reset 00:00 WIB\n\n{SEP}", back_kb())
+                if user["today_text"]>=5: send(chat_id, f"⚠️ Text limit 5/5 reached\n{SEP}\nReset 00:00 WIB", back_kb())
                 else:
                     tgl=datetime.now(WIB).strftime("%d %b %H:%M WIB")
                     clean_text = text.strip()
@@ -135,7 +134,7 @@ Tap Post to start!""", kb)
                     user["today_text"]+=1; user["total_text"]+=1
                     send_success(chat_id, user, ch_id)
             if "photo" in msg or "video" in msg:
-                if user["today_media"]>=5: send(chat_id, f"⚠️ Media limit 5/5 reached\n\n{SEP}", back_kb())
+                if user["today_media"]>=5: send(chat_id, f"⚠️ Media limit 5/5 reached\n{SEP}\nReset 00:00 WIB", back_kb())
                 else:
                     fid=msg["photo"][-1]["file_id"] if "photo" in msg else msg.get("video",{}).get("file_id")
                     is_photo = "photo" in msg
@@ -175,15 +174,9 @@ Tap Post to start!""", kb)
 Name: {user['name']}
 ID: {uid}
 Username: @{user['username'] or '-'}
-
-{SEP}
-
 Text: {user['today_text']}/5
 Media: {user['today_media']}/5
-Threads: {'ON' if user['threads_on'] else 'OFF'}
-Username: {user['threads_user'] or '-'}
-
-{SEP}""", back_kb())
+Threads: {'ON' if user['threads_on'] else 'OFF'}""", back_kb())
 
         elif cdata=="rules":
             send(chat_id, f"""📜 Rules
@@ -191,11 +184,9 @@ Username: {user['threads_user'] or '-'}
 
 1. No SARA, porn, spam
 2. No doxxing
-3. Limit 5 text & 5 media / day
+3. Limit 5/hari
 4. Be polite
-5. Admin can reject/ban
-
-{SEP}""", back_kb())
+5. Admin can reject/ban""", back_kb())
 
         elif cdata=="post":
             send(chat_id, f"""📝 Post Menfess
@@ -205,10 +196,8 @@ Send your text/photo/video now
 It will auto post to @menfessangel
 
 Auto:
-• Watermark logo kanan bawah
-• Hashtag {HASHTAG} di ujung kalimat
-
-{SEP}""", back_kb())
+- Watermark logo kanan bawah
+- Hashtag {HASHTAG} di ujung kalimat""", back_kb())
 
         elif cdata=="threads":
             kb={"inline_keyboard": [[{"text": "ON ✅", "callback_data": "threads_on"}, {"text": "OFF ❌", "callback_data": "threads_off"}], [{"text": "Set @Username", "callback_data": "threads_set"}], [{"text": "« Back", "callback_data": "back_home"}]]}
@@ -217,16 +206,11 @@ Auto:
 
 Status: {'ON' if user['threads_on'] else 'OFF'}
 Username: {user['threads_user'] or '-'}
+Set @username to enable""", kb)
 
-{SEP}
-
-Set @username to enable auto post info
-
-{SEP}""", kb)
-
-        elif cdata=="threads_on": user["threads_on"]=True; send(chat_id, f"✅ Threads: ON\n\n{SEP}", back_kb())
-        elif cdata=="threads_off": user["threads_on"]=False; send(chat_id, f"✅ Threads: OFF\n\n{SEP}", back_kb())
-        elif cdata=="threads_set": user["await_threads"]=True; send(chat_id, f"Send @threads username\n\nEx: @jogjalend\nSend - to remove\n\n{SEP}", back_kb())
+        elif cdata=="threads_on": user["threads_on"]=True; send(chat_id, f"✅ Threads: ON\n{SEP}\nEnabled", back_kb())
+        elif cdata=="threads_off": user["threads_on"]=False; send(chat_id, f"✅ Threads: OFF\n{SEP}\nDisabled", back_kb())
+        elif cdata=="threads_set": user["await_threads"]=True; send(chat_id, f"Send @threads username\n{SEP}\nEx: @jogjalend or - to remove", back_kb())
         elif cdata=="stats":
             send(chat_id, f"""📊 Stats
 {SEP}
@@ -237,9 +221,7 @@ Media {user['today_media']}/5
 
 Total:
 {user['total_text']} text
-{user['total_media']} media
-
-{SEP}""", back_kb())
+{user['total_media']} media""", back_kb())
 
         elif cdata=="help":
             send(chat_id, f"""ℹ️ Help
@@ -248,12 +230,8 @@ Total:
 Channel: @menfessangel
 Admin: @jogjalend
 Bot: @menfessangel_bot
-
 Commands:
-/start - menu
-Post - kirim menfess
-
-{SEP}""", back_kb())
+/start - menu""", back_kb())
 
         elif cdata=="back_home":
             kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Rules", "callback_data": "rules"}, {"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
@@ -268,8 +246,6 @@ Publish to:
 - Threads -> @jogjalend [optional]
 - X -> @jogjalendpm [maintenance]
 
-{SEP}
-
 Tap Post to start!""", kb)
 
         elif cdata.startswith("del_"):
@@ -277,9 +253,8 @@ Tap Post to start!""", kb)
             if mid.isdigit():
                 try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id": CHANNEL_ID, "message_id": int(mid)})
                 except: pass
-            send(chat_id, f"🗑️ Deleted from channel\n\n{SEP}", back_kb())
+            send(chat_id, f"🗑️ Deleted from channel\n{SEP}\nRemoved", back_kb())
 
-        # ADMIN PANEL
         if cdata=="admin_panel" and is_admin(chat_id):
             total_t=sum(u["today_text"] for u in USERS.values())
             total_m=sum(u["today_media"] for u in USERS.values())
@@ -297,31 +272,25 @@ Today: {total_t} text {total_m} media
 Logo: {'✅ Found' if find_logo() else '❌ Not found'}
 Hashtag: {HASHTAG}
 
-{SEP}
-
 Commands:
 /broadcast text
-/ban id
-/unban id
-
-{SEP}""", kb)
+/ban id""", kb)
 
         elif cdata.startswith("admin_") and is_admin(chat_id):
             if cdata=="admin_list":
                 txt=f"📋 20 users:\n{SEP}\n\n"
                 for k,v in list(USERS.items())[:20]: txt+=f"<code>{k}</code> @{v['username'] or '-'} T{v['today_text']} M{v['today_media']}\n"
-                txt+=f"\n{SEP}"
                 send(chat_id, txt, back_kb())
             elif cdata=="admin_banlist":
                 banned=[f"<code>{k}</code>" for k,v in USERS.items() if v["banned"]]
-                send(chat_id, f"🚫 Banned:\n{SEP}\n"+"\n".join(banned) if banned else f"None\n\n{SEP}", back_kb())
+                send(chat_id, f"🚫 Banned:\n{SEP}\n"+"\n".join(banned) if banned else f"None\n{SEP}\nNo banned", back_kb())
             elif cdata=="admin_reset":
                 for u in USERS.values(): u["today_text"]=0; u["today_media"]=0
-                send(chat_id, f"✅ All limits reset\n\n{SEP}", back_kb())
-            elif cdata=="admin_bc": send(chat_id, f"Use:\n/broadcast pesan lu\n\n{SEP}", back_kb())
-            elif cdata=="admin_users": send(chat_id, f"Total users: {len(USERS)}\n\n{SEP}", back_kb())
+                send(chat_id, f"✅ All limits reset\n{SEP}\nDone", back_kb())
+            elif cdata=="admin_bc": send(chat_id, f"Use:\n{SEP}\n/broadcast pesan lu", back_kb())
+            elif cdata=="admin_users": send(chat_id, f"Total users: {len(USERS)}\n{SEP}\nCount", back_kb())
             elif cdata=="admin_stats":
                 total_t=sum(u["total_text"] for u in USERS.values()); total_m=sum(u["total_media"] for u in USERS.values())
-                send(chat_id, f"📊 Total: {total_t} text {total_m} media\n\n{SEP}", back_kb())
+                send(chat_id, f"📊 Total: {total_t} text {total_m} media\n{SEP}\nStats", back_kb())
 
     return "ok",200
