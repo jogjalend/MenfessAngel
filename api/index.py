@@ -9,7 +9,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID") or "@menfessangel"
 ADMIN_ID = os.getenv("ADMIN_ID") or ""
 WIB = timezone(timedelta(hours=7))
-SEP = "────────"
+SEP = "───────────────────────────"
 USERS = defaultdict(lambda: {"name": "", "username": "", "threads_user": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "await_threads": False})
 HASHTAG = "#jogjalend"
 
@@ -201,7 +201,7 @@ To avoid joining and leaving the group as you please.
 
    - Complete the registration form from @jogja_lend
 
-3. Willing to comply with all rules in JogjaLend
+3. Willing to comply with all rules in @JogjaLend
 
 {SEP}
 
