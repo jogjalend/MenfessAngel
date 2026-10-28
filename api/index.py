@@ -1,8 +1,8 @@
 from flask import Flask, request
-import os, requests, io, json, time
+import os, requests, io, json
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 app = Flask(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -12,7 +12,7 @@ WIB = timezone(timedelta(hours=7))
 SEP = "────────────────────────"
 HASHTAG = "#jogjalend"
 
-USERS = defaultdict(lambda: {"name": "", "username": "", "threads_user": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "await_threads": False})
+USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0})
 
 def get_user(uid):
     u = USERS[uid]
@@ -79,22 +79,16 @@ def add_watermark(photo_bytes):
     except: return None
 
 def create_stats_chart(members, today_t, today_m, total_t, total_m):
-    # Grafik realtime simple
     W,H = 800, 450
     img = Image.new("RGB", (W,H), "#0f0f0f")
     draw = ImageDraw.Draw(img)
-    # background bars
     data = [("Today T", today_t), ("Today M", today_m), ("Total T", total_t), ("Total M", total_m), ("Members", members)]
     max_val = max([v for _,v in data] + [1])
-    bar_w = 110
-    gap = 30
-    start_x = 50
-    base_y = 350
+    bar_w = 110; gap = 30; start_x = 50; base_y = 350
     colors = ["#ff6b6b", "#4ecdc4", "#45b7d1", "#f9ca24", "#6c5ce7"]
     for i, (label, val) in enumerate(data):
         h = int((val / max_val) * 250) if max_val>0 else 0
-        x = start_x + i*(bar_w+gap)
-        y = base_y - h
+        x = start_x + i*(bar_w+gap); y = base_y - h
         draw.rectangle([x, y, x+bar_w, base_y], fill=colors[i])
         draw.text((x+10, base_y+10), label, fill="white")
         draw.text((x+10, y-25), str(val), fill="white")
@@ -106,15 +100,13 @@ def back_kb(): return {"inline_keyboard": [[{"text": "« Back", "callback_data":
 
 def send_success(chat_id, user, ch_msg_id):
     url=f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_msg_id}" if ch_msg_id else f"https://t.me/{CHANNEL_ID.replace('@','')}"
-    kb=[[{"text": "See on channel", "url": url}]]
-    if user["threads_on"] and user["threads_user"]: kb.append([{"text": "See on Threads", "url": f"https://www.threads.net/@{user['threads_user'].replace('@','')}"}])
-    kb.append([{"text": "Delete", "callback_data": f"del_{ch_msg_id}"}]); kb.append([{"text": "« Back", "callback_data": "back_home"}])
+    kb=[[{"text": "See on channel", "url": url}], [{"text": "Delete", "callback_data": f"del_{ch_msg_id}"}], [{"text": "« Back", "callback_data": "back_home"}]]
     send(chat_id, f"Menfess sent!\n{SEP}\nRemaining: {user['today_text']}/5 T, {user['today_media']}/5 M", {"inline_keyboard": kb})
 
 @app.route("/", methods=["GET","POST"])
 @app.route("/api/index", methods=["GET","POST"])
 def index():
-    if request.method=="GET": return "V86 FOTO + GRAFIK LIVE",200
+    if request.method=="GET": return "V86.1 THREADS SIMPLE LIVE",200
     data = request.get_json(force=True, silent=True) or {}
     
     if "message" in data:
@@ -127,15 +119,11 @@ def index():
             if is_admin(chat_id): kb["inline_keyboard"].append([{"text": "🔐 ADMIN PANEL", "callback_data": "admin_panel"}])
             send(chat_id, f"Hi {user['name']}!\n\n{SEP}\nPublish to @menfessangel\nTap Post!", kb)
         elif not user["banned"]:
-            if user.get("await_threads") and text and not text.startswith("/"):
-                if text.strip()=="-": user["threads_user"]=""; user["threads_on"]=False; user["await_threads"]=False; send(chat_id, f"Threads OFF\n{SEP}\nRemoved", back_kb())
-                elif text.startswith("@"): user["threads_user"]=text.strip(); user["threads_on"]=True; user["await_threads"]=False; send(chat_id, f"Threads ON {text}\n{SEP}\nActive", back_kb())
-            elif text and not text.startswith("/") and len(text)>=3:
+            if text and not text.startswith("/") and len(text)>=3:
                 if user["today_text"]>=5: send(chat_id, f"Limit 5/5\n{SEP}\nReset 00:00 WIB", back_kb())
                 else:
                     clean=text.strip()
                     if HASHTAG.lower() not in clean.lower(): clean=f"{clean} {HASHTAG}"
-                    if user["threads_on"] and user["threads_user"]: clean+=f"\n🧵 {user['threads_user']}"
                     r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": CHANNEL_ID, "text": clean, "parse_mode": "HTML"}, timeout=5).json()
                     ch_id=r.get("result",{}).get("message_id"); user["today_text"]+=1; user["total_text"]+=1; send_success(chat_id, user, ch_id)
             if "photo" in msg or "video" in msg:
@@ -145,7 +133,6 @@ def index():
                     is_photo="photo" in msg
                     base_cap=caption.strip() if caption else HASHTAG
                     if HASHTAG.lower() not in base_cap.lower(): base_cap=f"{base_cap} {HASHTAG}"
-                    if user["threads_on"] and user["threads_user"]: base_cap+=f"\n🧵 {user['threads_user']}"
                     ch_id=None
                     if is_photo:
                         raw=download_file(fid); wm=add_watermark(raw) if raw else None
@@ -168,7 +155,6 @@ def index():
             else: send(chat_id, txt, back_kb())
 
         elif cdata=="stats":
-            # REALTIME GRAPH
             _, members, title = get_channel_info()
             today_t = sum(u["today_text"] for u in USERS.values())
             today_m = sum(u["today_media"] for u in USERS.values())
@@ -180,17 +166,18 @@ def index():
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": caption_txt, "parse_mode": "HTML", "reply_markup": json.dumps(back_kb())}, files={"photo": chart}, timeout=8)
             except:
                 send(chat_id, caption_txt, back_kb())
+
+        elif cdata=="threads":
+            kb={"inline_keyboard": [[{"text": "ON ✅", "callback_data": "threads_on"}, {"text": "OFF ❌", "callback_data": "threads_off"}], [{"text": "« Back", "callback_data": "back_home"}]]}
+            send(chat_id, f"Threads Setting\n{SEP}\nStatus: {'ON' if user['threads_on'] else 'OFF'}\n\nON = auto publish ke Threads\nOFF = cuma Telegram", kb)
+        elif cdata=="threads_on": user["threads_on"]=True; send(chat_id, f"Threads: ON ✅\n{SEP}\nEnabled", back_kb())
+        elif cdata=="threads_off": user["threads_on"]=False; send(chat_id, f"Threads: OFF ❌\n{SEP}\nDisabled", back_kb())
+
         elif cdata=="back_home":
             kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Verification", "callback_data": "verification"}, {"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
             send(chat_id, f"Hi {user['name']}!\n{SEP}\nPublish to @menfessangel\nTap Post!", kb)
         elif cdata in ["verification", "rules"]: send(chat_id, f"Verification\n{SEP}\nContact @jogja_lend", back_kb())
         elif cdata=="post": send(chat_id, f"Post Menfess\n{SEP}\nKirim text/foto/video\nWatermark kiri atas + {HASHTAG}", back_kb())
-        elif cdata=="threads":
-            kb={"inline_keyboard": [[{"text": "ON ✅", "callback_data": "threads_on"}, {"text": "OFF ❌", "callback_data": "threads_off"}], [{"text": "Set Username", "callback_data": "threads_set"}], [{"text": "« Back", "callback_data": "back_home"}]]}
-            send(chat_id, f"Threads\n{SEP}\nStatus: {'ON' if user['threads_on'] else 'OFF'}\nUsername: {user['threads_user'] or '-'}", kb)
-        elif cdata=="threads_on": user["threads_on"]=True; send(chat_id, f"Threads: ON", back_kb())
-        elif cdata=="threads_off": user["threads_on"]=False; send(chat_id, f"Threads: OFF", back_kb())
-        elif cdata=="threads_set": user["await_threads"]=True; send(chat_id, f"Send @username\nEx: @jogjalend or -", back_kb())
         elif cdata=="help": send(chat_id, f"Help\n{SEP}\nChannel: @menfessangel", back_kb())
         elif cdata.startswith("del_"):
             mid=cdata.replace("del_","")
