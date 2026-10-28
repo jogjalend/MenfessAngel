@@ -66,12 +66,15 @@ def add_watermark(photo_bytes):
         base = Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
         logo = Image.open(logo_path).convert("RGBA")
         w, h = base.size
-        logo_size = int(w * 0.16)
+        # V82 - PILIHAN C 13% PAS
+        logo_size = int(w * 0.13)
         logo = logo.resize((logo_size, logo_size))
+        # transparan dikit biar elegan
+        logo.putalpha(200)
         overlay = Image.new("RGBA", base.size, (0,0,0,0))
-        overlay.paste(logo, (w - logo_size - 15, h - logo_size - 15), logo)
+        overlay.paste(logo, (w - logo_size - 12, h - logo_size - 12), logo)
         combined = Image.alpha_composite(base, overlay).convert("RGB")
-        bio = io.BytesIO(); combined.save(bio, "JPEG", quality=92); bio.seek(0)
+        bio = io.BytesIO(); combined.save(bio, "JPEG", quality=90); bio.seek(0)
         return bio
     except: return None
 
@@ -95,7 +98,7 @@ Posted to {'Telegram + Threads' if user['threads_on'] else 'Telegram'}"""
 @app.route("/", methods=["GET"])
 @app.route("/api/index", methods=["GET","POST"])
 def index():
-    if request.method=="GET": return "V79 VERIFICATION TITLE LIVE",200
+    if request.method=="GET": return "V82 LOGO 13% PAS + NO TIME LIVE",200
     data = request.get_json(force=True, silent=True) or {}
     
     if "message" in data:
@@ -126,10 +129,9 @@ Tap Post to start!"""
             elif text and not text.startswith("/") and len(text)>=3:
                 if user["today_text"]>=5: send(chat_id, f"Limit 5/5\n{SEP}\nReset 00:00 WIB", back_kb())
                 else:
-                    tgl=datetime.now(WIB).strftime("%d %b %H:%M WIB")
                     clean_text = text.strip()
                     if HASHTAG.lower() not in clean_text.lower(): clean_text = f"{clean_text} {HASHTAG}"
-                    final=f"{clean_text}\n\n—\n<i>{tgl}</i>"
+                    final = f"{clean_text}"
                     if user["threads_on"] and user["threads_user"]: final+=f"\n🧵 {user['threads_user']}"
                     r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": CHANNEL_ID, "text": final, "parse_mode": "HTML"}).json()
                     ch_id=r.get("result",{}).get("message_id")
@@ -140,11 +142,10 @@ Tap Post to start!"""
                 else:
                     fid=msg["photo"][-1]["file_id"] if "photo" in msg else msg.get("video",{}).get("file_id")
                     is_photo = "photo" in msg
-                    tgl=datetime.now(WIB).strftime("%d %b %H:%M WIB")
                     base_cap = caption.strip() if caption else ""
                     if base_cap and HASHTAG.lower() not in base_cap.lower(): base_cap = f"{base_cap} {HASHTAG}"
                     elif not base_cap: base_cap = HASHTAG
-                    cap=f"{base_cap}\n\n—\n<i>{tgl}</i>"
+                    cap = f"{base_cap}"
                     if user["threads_on"] and user["threads_user"]: cap+=f"\n🧵 {user['threads_user']}"
                     ch_id=None
                     if is_photo:
@@ -201,7 +202,7 @@ To avoid joining and leaving the group as you please.
 
    - Complete the registration form from @jogja_lend
 
-3. Willing to comply with all rules in @JogjaLend
+3. Willing to comply with all rules in JogjaLend
 
 {SEP}
 
@@ -222,13 +223,12 @@ Contact Admin: @jogja_lend"""
             all_t = sum(u["total_text"] for u in USERS.values())
             all_m = sum(u["total_media"] for u in USERS.values())
             caption_txt = f"""Stats - {title}
-{SEP}
+
 📈 Channel Activity:
 Members: {members}+
 Today: {total_t} text, {total_m} media
 Total: {all_t} text, {all_m} media
 
-{SEP}
 👤 Your Stats:
 Today: {user['today_text']}/5 text, {user['today_media']}/5 media
 Total: {user['total_text']} text, {user['total_media']} media
