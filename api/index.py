@@ -66,17 +66,18 @@ def add_watermark(photo_bytes):
         base = Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
         logo = Image.open(logo_path).convert("RGBA")
         w, h = base.size
-        # V82 - PILIHAN C 13% PAS
+        # V83 FINAL - 13% PAS + PAKE FILE TRANSPARAN LU (TANPA PUTALPHA)
         logo_size = int(w * 0.13)
         logo = logo.resize((logo_size, logo_size))
-        # transparan dikit biar elegan
-        logo.putalpha(200)
         overlay = Image.new("RGBA", base.size, (0,0,0,0))
         overlay.paste(logo, (w - logo_size - 12, h - logo_size - 12), logo)
         combined = Image.alpha_composite(base, overlay).convert("RGB")
-        bio = io.BytesIO(); combined.save(bio, "JPEG", quality=90); bio.seek(0)
+        bio = io.BytesIO()
+        combined.save(bio, "JPEG", quality=90)
+        bio.seek(0)
         return bio
-    except: return None
+    except:
+        return None
 
 def back_kb(): return {"inline_keyboard": [[{"text": "« Back", "callback_data": "back_home"}]]}
 
@@ -98,7 +99,7 @@ Posted to {'Telegram + Threads' if user['threads_on'] else 'Telegram'}"""
 @app.route("/", methods=["GET"])
 @app.route("/api/index", methods=["GET","POST"])
 def index():
-    if request.method=="GET": return "V82 LOGO 13% PAS + NO TIME LIVE",200
+    if request.method=="GET": return "V83 LOGO TRANSPARAN 13% PAS + NO TIME LIVE",200
     data = request.get_json(force=True, silent=True) or {}
     
     if "message" in data:
