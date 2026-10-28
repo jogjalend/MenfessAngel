@@ -9,7 +9,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID") or "@menfessangel"
 ADMIN_ID = os.getenv("ADMIN_ID") or ""
 WIB = timezone(timedelta(hours=7))
-SEP = "──────────────────"
+SEP = "────────────────────────"
 USERS = defaultdict(lambda: {"name": "", "username": "", "threads_user": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "await_threads": False})
 HASHTAG = "#jogjalend"
 
@@ -18,7 +18,6 @@ def get_user(uid):
     if u["last_date"] != datetime.now(WIB).strftime("%Y-%m-%d"):
         u["today_text"]=0; u["today_media"]=0; u["last_date"]=datetime.now(WIB).strftime("%Y-%m-%d")
     return u
-
 def is_admin(uid): return str(uid) in ADMIN_ID.split(",") if ADMIN_ID else False
 
 def send(chat_id, text, kb=None):
@@ -44,9 +43,7 @@ def get_channel_info():
     try:
         r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getChat", params={"chat_id": CHANNEL_ID}).json()
         chat = r.get("result", {})
-        photo_file_id = None
-        if "photo" in chat:
-            photo_file_id = chat["photo"].get("big_file_id")
+        photo_file_id = chat.get("photo", {}).get("big_file_id")
         title = chat.get("title", "@menfessangel")
         try:
             rc = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMemberCount", params={"chat_id": CHANNEL_ID}).json()
@@ -89,8 +86,7 @@ def send_success(chat_id, user, ch_msg_id):
 Remaining quota:
 Text : {user['today_text']}/5
 Media : {user['today_media']}/5
-Posted to {'Telegram + Threads' if user['threads_on'] else 'Telegram only'}
-Channel : {CHANNEL_ID}"""
+Posted to {'Telegram + Threads' if user['threads_on'] else 'Telegram only'}"""
     channel_url=f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_msg_id}" if ch_msg_id else f"https://t.me/{CHANNEL_ID.replace('@','')}"
     kb=[[{"text": "See on channel", "url": channel_url}]]
     if user["threads_on"] and user["threads_user"]:
@@ -99,35 +95,10 @@ Channel : {CHANNEL_ID}"""
     kb.append([{"text": "« Back to Menu", "callback_data": "back_home"}])
     send(chat_id, reply, {"inline_keyboard": kb})
 
-def build_dashboard(uid, user):
-    channel_photo_id, members, title = get_channel_info()
-    total_t = sum(u["today_text"] for u in USERS.values())
-    total_m = sum(u["today_media"] for u in USERS.values())
-    caption = f"""Hi {user['name']}!
-Promote your account here!
-
-{SEP}
-
-📊 {title} Activity:
-Today: {total_t} text, {total_m} media
-Members: {members}+
-Channel: {CHANNEL_ID}
-
-{SEP}
-
-Publish to:
-- Channel -> @menfessangel
-- Threads -> @jogjalend [optional]
-
-Tap Post to start!"""
-    kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Rules", "callback_data": "rules"}, {"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
-    if is_admin(uid): kb["inline_keyboard"].append([{"text": "🔐 ADMIN PANEL", "callback_data": "admin_panel"}])
-    return channel_photo_id, caption, kb
-
 @app.route("/", methods=["GET"])
 @app.route("/api/index", methods=["GET","POST"])
 def index():
-    if request.method=="GET": return "V74 DASHBOARD CHANNEL ACTIVITY IMAGE LIVE",200
+    if request.method=="GET": return "V75 STATS WITH CHANNEL IMAGE LIVE",200
     data = request.get_json(force=True, silent=True) or {}
     
     if "message" in data:
@@ -137,34 +108,28 @@ def index():
             user["username"]=msg["from"].get("username","")
 
         if text.startswith("/start"):
-            photo_id, cap, kb = build_dashboard(chat_id, user)
-            if photo_id:
-                content = download_file(photo_id)
-                if content:
-                    try:
-                        bio = io.BytesIO(content)
-                        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": cap, "parse_mode": "HTML", "reply_markup": json.dumps(kb)}, files={"photo": bio})
-                    except:
-                        send(chat_id, cap, kb)
-                else:
-                    send(chat_id, cap, kb)
-            else:
-                logo_path = find_logo()
-                if logo_path and os.path.exists(logo_path):
-                    try:
-                        with open(logo_path, 'rb') as f:
-                            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": cap, "parse_mode": "HTML", "reply_markup": json.dumps(kb)}, files={"photo": f})
-                    except:
-                        send(chat_id, cap, kb)
-                else:
-                    send(chat_id, cap, kb)
+            kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Rules", "callback_data": "rules"}, {"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
+            if is_admin(chat_id): kb["inline_keyboard"].append([{"text": "🔐 ADMIN PANEL", "callback_data": "admin_panel"}])
+            caption_txt = f"""Hi {user['name']}!
+Promote your account here!
 
-        elif text.startswith("/broadcast ") and is_admin(chat_id):
-            bc=text.replace("/broadcast ",""); cnt=0
-            for uid2 in list(USERS.keys()):
-                try: send(uid2, f"📢 Broadcast\n{SEP}\n\n{bc}"); cnt+=1
-                except: pass
-            send(chat_id, f"Broadcast ke {cnt}\n{SEP}\nDone", back_kb())
+{SEP}
+
+Publish to:
+- Channel -> @menfessangel
+- Threads -> @jogjalend [optional]
+
+Tap Post to start!"""
+            logo_path = find_logo()
+            if logo_path and os.path.exists(logo_path):
+                try:
+                    with open(logo_path, 'rb') as f:
+                        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": caption_txt, "parse_mode": "HTML", "reply_markup": json.dumps(kb)}, files={"photo": f})
+                except:
+                    send(chat_id, caption_txt, kb)
+            else:
+                send(chat_id, caption_txt, kb)
+
         elif not user["banned"]:
             if user.get("await_threads") and text and not text.startswith("/"):
                 if text.strip()=="-": user["threads_user"]=""; user["threads_on"]=False; user["await_threads"]=False; send(chat_id, f"Threads OFF\n{SEP}\nRemoved", back_kb())
@@ -229,7 +194,8 @@ Threads: {'ON' if user['threads_on'] else 'OFF'}"""
                 except: send(chat_id, caption_txt, back_kb())
             else:
                 send(chat_id, caption_txt, back_kb())
-        elif cdata=="rules": send(chat_id, f"📜 Rules\n{SEP}\n\n1. No SARA, porn, spam\n2. No doxxing\n3. Limit 5/hari\n4. Be polite", back_kb())
+
+        elif cdata=="rules": send(chat_id, f"📜 Rules\n{SEP}\n\n1. No SARA, porn, spam\n2. No doxxing\n3. Limit 5/hari", back_kb())
         elif cdata=="post": send(chat_id, f"📝 Post Menfess\n{SEP}\n\nKirim text/foto/video sekarang\nAuto watermark + {HASHTAG}", back_kb())
         elif cdata=="threads":
             kb={"inline_keyboard": [[{"text": "ON ✅", "callback_data": "threads_on"}, {"text": "OFF ❌", "callback_data": "threads_off"}], [{"text": "Set Username", "callback_data": "threads_set"}], [{"text": "« Back", "callback_data": "back_home"}]]}
@@ -237,30 +203,74 @@ Threads: {'ON' if user['threads_on'] else 'OFF'}"""
         elif cdata=="threads_on": user["threads_on"]=True; send(chat_id, f"Threads: ON\n{SEP}\nEnabled", back_kb())
         elif cdata=="threads_off": user["threads_on"]=False; send(chat_id, f"Threads: OFF\n{SEP}\nDisabled", back_kb())
         elif cdata=="threads_set": user["await_threads"]=True; send(chat_id, f"Send @username\n{SEP}\nEx: @jogjalend or -", back_kb())
-        elif cdata=="stats": send(chat_id, f"📊 Stats\n{SEP}\n\nToday: Text {user['today_text']}/5 Media {user['today_media']}/5\nTotal: {user['total_text']} text {user['total_media']} media", back_kb())
-        elif cdata=="help": send(chat_id, f"ℹ️ Help\n{SEP}\n\nChannel: @menfessangel\nAdmin: @jogjalend", back_kb())
-        elif cdata=="back_home":
-            photo_id, cap, kb = build_dashboard(chat_id, user)
-            if photo_id:
-                content = download_file(photo_id)
+
+        elif cdata=="stats":
+            # STATS DENGAN GAMBAR AKTIVITAS CHANNEL
+            channel_photo_id, members, title = get_channel_info()
+            total_t = sum(u["today_text"] for u in USERS.values())
+            total_m = sum(u["today_media"] for u in USERS.values())
+            all_t = sum(u["total_text"] for u in USERS.values())
+            all_m = sum(u["total_media"] for u in USERS.values())
+            
+            caption_txt = f"""📊 Stats
+{SEP}
+
+📈 Channel Activity {title}:
+Members: {members}+
+Today: {total_t} text, {total_m} media
+Total All Time: {all_t} text, {all_m} media
+Channel: {CHANNEL_ID}
+
+{SEP}
+
+👤 Your Stats:
+Today: {user['today_text']}/5 text, {user['today_media']}/5 media
+Total: {user['total_text']} text, {user['total_media']} media"""
+
+            if channel_photo_id:
+                content = download_file(channel_photo_id)
                 if content:
                     try:
                         bio = io.BytesIO(content)
-                        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": cap, "parse_mode": "HTML", "reply_markup": json.dumps(kb)}, files={"photo": bio})
+                        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": caption_txt, "parse_mode": "HTML", "reply_markup": json.dumps(back_kb())}, files={"photo": bio})
                     except:
-                        send(chat_id, cap, kb)
+                        send(chat_id, caption_txt, back_kb())
                 else:
-                    send(chat_id, cap, kb)
+                    send(chat_id, caption_txt, back_kb())
             else:
                 logo_path = find_logo()
                 if logo_path and os.path.exists(logo_path):
                     try:
                         with open(logo_path, 'rb') as f:
-                            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": cap, "parse_mode": "HTML", "reply_markup": json.dumps(kb)}, files={"photo": f})
+                            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": caption_txt, "parse_mode": "HTML", "reply_markup": json.dumps(back_kb())}, files={"photo": f})
                     except:
-                        send(chat_id, cap, kb)
+                        send(chat_id, caption_txt, back_kb())
                 else:
-                    send(chat_id, cap, kb)
+                    send(chat_id, caption_txt, back_kb())
+
+        elif cdata=="help": send(chat_id, f"ℹ️ Help\n{SEP}\n\nChannel: @menfessangel\nAdmin: @jogjalend", back_kb())
+        elif cdata=="back_home":
+            kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Rules", "callback_data": "rules"}, {"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
+            if is_admin(chat_id): kb["inline_keyboard"].append([{"text": "🔐 ADMIN PANEL", "callback_data": "admin_panel"}])
+            caption_txt = f"""Hi {user['name']}!
+Promote your account here!
+
+{SEP}
+
+Publish to:
+- Channel -> @menfessangel
+- Threads -> @jogjalend [optional]
+
+Tap Post to start!"""
+            logo_path = find_logo()
+            if logo_path and os.path.exists(logo_path):
+                try:
+                    with open(logo_path, 'rb') as f:
+                        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": caption_txt, "parse_mode": "HTML", "reply_markup": json.dumps(kb)}, files={"photo": f})
+                except:
+                    send(chat_id, caption_txt, kb)
+            else:
+                send(chat_id, caption_txt, kb)
         elif cdata.startswith("del_"):
             mid=cdata.replace("del_","")
             if mid.isdigit():
@@ -271,13 +281,9 @@ Threads: {'ON' if user['threads_on'] else 'OFF'}"""
         if cdata=="admin_panel" and is_admin(chat_id):
             total_t=sum(u["today_text"] for u in USERS.values()); total_m=sum(u["today_media"] for u in USERS.values())
             kb={"inline_keyboard": [[{"text": f"👥 {len(USERS)} Users", "callback_data": "admin_users"}, {"text": f"📈 {total_t}T {total_m}M", "callback_data": "admin_stats"}], [{"text": "📢 Broadcast", "callback_data": "admin_bc"}, {"text": "📋 List", "callback_data": "admin_list"}], [{"text": "🔄 Reset", "callback_data": "admin_reset"}, {"text": "🚫 Banned", "callback_data": "admin_banlist"}], [{"text": "« Back", "callback_data": "back_home"}]]}
-            send(chat_id, f"🔐 ADMIN PANEL\n{SEP}\n\nUsers: {len(USERS)}\nToday: {total_t}T {total_m}M\nLogo: {'✅' if find_logo() else '❌'}", kb)
+            send(chat_id, f"🔐 ADMIN PANEL\n{SEP}\n\nUsers: {len(USERS)}\nToday: {total_t}T {total_m}M", kb)
         elif cdata.startswith("admin_") and is_admin(chat_id):
-            if cdata=="admin_list":
-                txt=f"📋 Users:\n{SEP}\n\n"
-                for k,v in list(USERS.items())[:20]: txt+=f"<code>{k}</code> @{v['username'] or '-'}\n"
-                send(chat_id, txt, back_kb())
-            elif cdata=="admin_reset":
+            if cdata=="admin_reset":
                 for u in USERS.values(): u["today_text"]=0; u["today_media"]=0
                 send(chat_id, f"Reset done\n{SEP}\nAll limits 0", back_kb())
             else: send(chat_id, f"Admin\n{SEP}\nDone", back_kb())
