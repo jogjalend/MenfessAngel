@@ -9,10 +9,10 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID") or "@menfessangel"
 ADMIN_ID = os.getenv("ADMIN_ID") or ""
 WIB = timezone(timedelta(hours=7))
-SEP = "────────────────────────"
+SEP = "────────"
 HASHTAG = "#jogjalend"
 
-USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0})
+USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "await_bc": False})
 
 def get_user(uid):
     u = USERS[uid]
@@ -30,7 +30,6 @@ def send(chat_id, text, kb=None):
     except: pass
 
 def welcome_text(user):
-    # 1 GARIS DOANG - FINAL
     return f"""Hi {user['name']}!
 {SEP}
 Publish to @menfessangel
@@ -44,7 +43,6 @@ def find_logo():
     for p in ["logo.png", "../logo.png", os.path.join(os.path.dirname(__file__), "../logo.png")]:
         if os.path.exists(p): return p
     return None
-
 def get_profile_photo_id(user_id):
     try:
         r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getUserProfilePhotos", params={"user_id": user_id, "limit": 1}, timeout=4).json()
@@ -52,27 +50,21 @@ def get_profile_photo_id(user_id):
             return r["result"]["photos"][0][-1]["file_id"]
     except: pass
     return None
-
 def get_channel_info():
     try:
         r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getChat", params={"chat_id": CHANNEL_ID}, timeout=4).json()
-        chat = r.get("result", {})
-        photo_file_id = chat.get("photo", {}).get("big_file_id")
-        title = chat.get("title", "menfessangel")
+        chat = r.get("result", {}); title = chat.get("title", "menfessangel")
         try:
-            rc = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMemberCount", params={"chat_id": CHANNEL_ID}, timeout=4).json()
-            members = rc.get("result", 0)
+            rc = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMemberCount", params={"chat_id": CHANNEL_ID}, timeout=4).json(); members = rc.get("result", 0)
         except: members = 0
-        return photo_file_id, members, title
-    except: return None, 0, "menfessangel"
-
+        return members, title
+    except: return 0, "menfessangel"
 def download_file(file_id):
     try:
         info = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile", params={"file_id": file_id}, timeout=4).json()
         fp = info["result"]["file_path"]
         return requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}", timeout=6).content
     except: return None
-
 def add_watermark(photo_bytes):
     try:
         lp = find_logo()
@@ -82,15 +74,14 @@ def add_watermark(photo_bytes):
         w,h = base.size; sz = int(w*0.13)
         logo = logo.resize((sz,sz), Image.LANCZOS)
         overlay = Image.new("RGBA", base.size, (0,0,0,0))
-        overlay.paste(logo, (12, 12), logo) # KIRI ATAS JELAS 13%
+        overlay.paste(logo, (12, 12), logo)
         combined = Image.alpha_composite(base, overlay).convert("RGB")
         bio = io.BytesIO(); combined.save(bio, "JPEG", quality=92); bio.seek(0)
         return bio
     except: return None
-
-def create_stats_chart(members, today_t, today_m, total_t, total_m):
+def create_stats_chart(members, today_text, today_media, total_text, total_media):
     W,H = 800, 450; img = Image.new("RGB", (W,H), "#0f0f0f"); draw = ImageDraw.Draw(img)
-    data = [("Today T", today_t), ("Today M", today_m), ("Total T", total_t), ("Total M", total_m), ("Members", members)]
+    data = [("Today text", today_text), ("Today media", today_media), ("Total text", total_text), ("Total media", total_media), ("Members", members)]
     max_val = max([v for _,v in data] + [1]); bar_w = 110; gap = 30; start_x = 50; base_y = 350
     colors = ["#ff6b6b", "#4ecdc4", "#45b7d1", "#f9ca24", "#6c5ce7"]
     for i, (label, val) in enumerate(data):
@@ -102,11 +93,11 @@ def create_stats_chart(members, today_t, today_m, total_t, total_m):
     bio = io.BytesIO(); img.save(bio, "PNG"); bio.seek(0); return bio
 
 def back_kb(): return {"inline_keyboard": [[{"text": "« Back", "callback_data": "back_home"}]]}
+def admin_back_kb(): return {"inline_keyboard": [[{"text": "« Back to Admin", "callback_data": "admin_panel"}]]}
 def main_kb(is_admin_user=False):
     kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Verification", "callback_data": "verification"}, {"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
     if is_admin_user: kb["inline_keyboard"].append([{"text": "🔐 ADMIN PANEL", "callback_data": "admin_panel"}])
     return kb
-
 def send_success(chat_id, user, ch_msg_id):
     url=f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_msg_id}" if ch_msg_id else f"https://t.me/{CHANNEL_ID.replace('@','')}"
     kb=[[{"text": "See on channel", "url": url}], [{"text": "Delete", "callback_data": f"del_{ch_msg_id}"}], [{"text": "« Back", "callback_data": "back_home"}]]
@@ -115,7 +106,7 @@ def send_success(chat_id, user, ch_msg_id):
 @app.route("/", methods=["GET","POST"])
 @app.route("/api/index", methods=["GET","POST"])
 def index():
-    if request.method=="GET": return "V86.4 1 GARIS FINAL LIVE",200
+    if request.method=="GET": return "V87.1 TEXT MEDIA LABEL LIVE",200
     data = request.get_json(force=True, silent=True) or {}
     
     if "message" in data:
@@ -123,10 +114,20 @@ def index():
         if "from" in msg:
             user["name"]=(msg["from"].get("first_name","")+" "+(msg["from"].get("last_name","") or "")).strip() or "-"
             user["username"]=msg["from"].get("username","")
-        if text.startswith("/start"):
+
+        if user.get("await_bc") and is_admin(chat_id) and text and not text.startswith("/"):
+            user["await_bc"]=False
+            sent=0
+            for u_id in list(USERS.keys()):
+                try:
+                    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": int(u_id), "text": f"📢 Broadcast\n{SEP}\n{text}", "parse_mode": "HTML"}, timeout=2)
+                    sent+=1
+                except: pass
+            send(chat_id, f"Broadcast sent to {sent} users\n{SEP}\n{text}", admin_back_kb())
+        elif text.startswith("/start"):
             send(chat_id, welcome_text(user), main_kb(is_admin(chat_id)))
         elif not user["banned"]:
-            if text and not text.startswith("/") and len(text)>=3:
+            if text and not text.startswith("/") and len(text)>=3 and not user.get("await_bc"):
                 if user["today_text"]>=5: send(chat_id, f"Limit 5/5\n{SEP}\nReset 00:00 WIB", back_kb())
                 else:
                     clean=text.strip()
@@ -161,11 +162,11 @@ def index():
                 except: send(chat_id, txt, back_kb())
             else: send(chat_id, txt, back_kb())
         elif cdata=="stats":
-            _, members, title = get_channel_info()
-            today_t = sum(u["today_text"] for u in USERS.values()); today_m = sum(u["today_media"] for u in USERS.values())
-            all_t = sum(u["total_text"] for u in USERS.values()); all_m = sum(u["total_media"] for u in USERS.values())
-            chart = create_stats_chart(members, today_t, today_m, all_t, all_m)
-            caption_txt = f"Stats - {title}\n\nMembers: {members}+\nToday: {today_t}T {today_m}M\nTotal: {all_t}T {all_m}M\nYour: {user['today_text']}/5 T, {user['today_media']}/5 M"
+            members, title = get_channel_info()
+            today_text = sum(u["today_text"] for u in USERS.values()); today_media = sum(u["today_media"] for u in USERS.values())
+            all_text = sum(u["total_text"] for u in USERS.values()); all_media = sum(u["total_media"] for u in USERS.values())
+            chart = create_stats_chart(members, today_text, today_media, all_text, all_media)
+            caption_txt = f"Stats - {title}\n\nMembers: {members}+\nToday: {today_text} text {today_media} media\nTotal: {all_text} text {all_media} media\nYour: {user['today_text']}/5 text, {user['today_media']}/5 media"
             try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": caption_txt, "parse_mode": "HTML", "reply_markup": json.dumps(back_kb())}, files={"photo": chart}, timeout=8)
             except: send(chat_id, caption_txt, back_kb())
         elif cdata=="back_home":
@@ -184,13 +185,56 @@ def index():
                 try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id": CHANNEL_ID, "message_id": int(mid)}, timeout=3)
                 except: pass
             send(chat_id, f"Deleted\n{SEP}\nRemoved", back_kb())
+
         elif cdata=="admin_panel" and is_admin(chat_id):
-            total_t=sum(u["today_text"] for u in USERS.values()); total_m=sum(u["today_media"] for u in USERS.values())
-            kb={"inline_keyboard": [[{"text": f"👥 {len(USERS)} Users", "callback_data": "admin_users"}, {"text": f"📈 {total_t}T {total_m}M", "callback_data": "admin_stats"}], [{"text": "🔄 Reset Limits", "callback_data": "admin_reset"}], [{"text": "« Back", "callback_data": "back_home"}]]}
-            send(chat_id, f"🔐 ADMIN PANEL\n{SEP}\nUsers: {len(USERS)}\nToday: {total_t}T {total_m}M", kb)
+            members, _ = get_channel_info()
+            today_text=sum(u["today_text"] for u in USERS.values()); today_media=sum(u["today_media"] for u in USERS.values())
+            banned=len([u for u in USERS.values() if u["banned"]])
+            kb={"inline_keyboard": [
+                [{"text": f"👥 {len(USERS)} Users", "callback_data": "admin_users"}, {"text": f"📈 {today_text} text {today_media} media", "callback_data": "admin_chart"}],
+                [{"text": "📢 Broadcast", "callback_data": "admin_bc"}, {"text": "📋 List User", "callback_data": "admin_list"}],
+                [{"text": f"🚫 Banned {banned}", "callback_data": "admin_banlist"}, {"text": "🔍 Search", "callback_data": "admin_search"}],
+                [{"text": "🔄 Reset All Limits", "callback_data": "admin_reset"}, {"text": "📊 Detail", "callback_data": "admin_detail"}],
+                [{"text": "« Back", "callback_data": "back_home"}]
+            ]}
+            send(chat_id, f"🔐 ADMIN PANEL FULL\n{SEP}\nUsers: {len(USERS)}\nToday: {today_text} text {today_media} media\nMembers CH: {members}\nBanned: {banned}\n{SEP}\nPilih menu:", kb)
+
         elif cdata.startswith("admin_") and is_admin(chat_id):
+            members, title = get_channel_info()
+            today_text=sum(u["today_text"] for u in USERS.values()); today_media=sum(u["today_media"] for u in USERS.values())
+            all_text=sum(u["total_text"] for u in USERS.values()); all_media=sum(u["total_media"] for u in USERS.values())
+
             if cdata=="admin_reset":
                 for u in USERS.values(): u["today_text"]=0; u["today_media"]=0
-                send(chat_id, f"Reset done\n{SEP}\nAll limits 0", back_kb())
-            else: send(chat_id, f"Admin {cdata}\n{SEP}\nDone", back_kb())
+                send(chat_id, f"✅ Reset done\n{SEP}\nSemua limit jadi 0/5", admin_back_kb())
+            elif cdata=="admin_users" or cdata=="admin_list":
+                txt=f"List User ({len(USERS)})\n{SEP}\n"
+                for i,(uid2,u2) in enumerate(list(USERS.items())[:30]):
+                    txt+=f"{i+1}. {u2['name'][:15]} | {u2['today_text']} text {u2['today_media']} media {'🚫' if u2['banned'] else ''}\nID:{uid2}\n"
+                send(chat_id, txt, admin_back_kb())
+            elif cdata=="admin_chart":
+                chart = create_stats_chart(members, today_text, today_media, all_text, all_media)
+                cap=f"Admin Chart - {title}\nMembers:{members} Users:{len(USERS)}\nToday:{today_text} text {today_media} media\nTotal:{all_text} text {all_media} media"
+                try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": cap, "parse_mode": "HTML", "reply_markup": json.dumps(admin_back_kb())}, files={"photo": chart}, timeout=8)
+                except: send(chat_id, cap, admin_back_kb())
+            elif cdata=="admin_detail":
+                send(chat_id, f"Detail Stats\n{SEP}\nChannel: {title}\nMembers: {members}\nTotal Users: {len(USERS)}\nToday Text: {today_text}\nToday Media: {today_media}\nAll Time Text: {all_text}\nAll Time Media: {all_media}\nBanned: {len([u for u in USERS.values() if u['banned']])}", admin_back_kb())
+            elif cdata=="admin_bc":
+                user["await_bc"]=True
+                send(chat_id, f"📢 BROADCAST\n{SEP}\nKirim text broadcast lu sekarang\nNanti kekirim ke {len(USERS)} user", admin_back_kb())
+            elif cdata=="admin_banlist":
+                banned_users=[(uid2,u2) for uid2,u2 in USERS.items() if u2["banned"]]
+                if not banned_users: send(chat_id, f"No banned users", admin_back_kb())
+                else:
+                    txt=f"Banned {len(banned_users)}\n{SEP}\n"
+                    for uid2,u2 in banned_users[:20]: txt+=f"{u2['name']} - {uid2}\n"
+                    kb={"inline_keyboard": [[{"text": "Unban All", "callback_data": "admin_unbanall"}], [{"text": "« Back to Admin", "callback_data": "admin_panel"}]]}
+                    send(chat_id, txt, kb)
+            elif cdata=="admin_unbanall":
+                for u in USERS.values(): u["banned"]=False
+                send(chat_id, f"✅ All unbanned", admin_back_kb())
+            elif cdata=="admin_search":
+                send(chat_id, f"Search\n{SEP}\nKirim ID user yang mau dicari\nFormat: /ban ID atau /unban ID\nContoh: /ban 123456", admin_back_kb())
+            else:
+                send(chat_id, f"Coming soon {cdata}", admin_back_kb())
     return "ok",200
