@@ -13,12 +13,12 @@ THREADS_URL = os.getenv("THREADS") or "https://threads.net/jogjalend"
 THREADS_USER_ID = os.getenv("THREADS_USER_ID")
 THREADS_TOKEN = os.getenv("THREADS_TOKEN")
 WIB = timezone(timedelta(hours=7))
-SEP = "●------------------------------------------------------●"
+SEP = "●-----------------------------------------------------●"
 HASHTAG = "#jogjalend"
 
-# === FIX FONT SANS BIASA - MENTIONS & LINK TETAP KLIKABLE ===
+# === V106.6 FIX - ALL CLICKABLE ===
 def to_fancy(text):
-    pattern = r'@\w+|#\w+|https?://\S+|threads\.net/\S+|t\.me/\S+'
+    pattern = r'@\w+|#\w+|/\w+|https?://\S+|threads\.net/\S+|t\.me/\S+'
     res_parts = []
     last_idx = 0
     for m in re.finditer(pattern, text):
@@ -30,7 +30,7 @@ def to_fancy(text):
             elif '0' <= c <= '9': conv+=chr(0x1D7E2 + ord(c)-48)
             else: conv+=c
         res_parts.append(conv)
-        res_parts.append(m.group(0))  # jangan di convert
+        res_parts.append(m.group(0))
         last_idx = m.end()
     tail = text[last_idx:]
     conv = ""
@@ -246,7 +246,7 @@ def send_success(chat_id,user,ch_msg_id,target="both"):
 def main_handler():
     try:
         init_db()
-        if request.method=="GET": return "V106.5 FIX OK",200
+        if request.method=="GET": return "V106.6 OK",200
         data=request.get_json(force=True,silent=True) or {}
         if "message" in data:
             msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id); user=get_user(uid); text=msg.get("text",""); caption=msg.get("caption","")
@@ -329,7 +329,7 @@ DAFTAR PERINTAH:
 /start - Menu utama
 /stats - Statistik TODAY 1D & WEEKLY 7D
 
-Bot Versi V106.5
+Bot Versi V106.6
 Author : @jogja_lend""", get_back_keyboard())
             elif cdata=="stats": send_stats(chat_id,user,"today")
             elif cdata=="stats_today": send_stats(chat_id,user,"today")
