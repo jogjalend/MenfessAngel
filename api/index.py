@@ -96,7 +96,6 @@ def add_watermark(photo_bytes):
         return bio
     except: return None
 
-# === THREADS AUTO POST ===
 def post_to_threads_auto(text_content):
     try:
         if not THREADS_USER_ID or not THREADS_TOKEN: return False
@@ -121,16 +120,31 @@ def send_success(chat_id, user, ch_msg_id):
 @app.route("/", methods=["GET","POST"])
 @app.route("/api/index", methods=["GET","POST"])
 def index():
-    if request.method=="GET": init_db(); return f"V94 AUTO THREADS OK - {THREADS_URL}",200
+    if request.method=="GET": 
+        init_db()
+        # TAMBAHAN COMMAND MENU BIAR MUNCUL PAS KETIK /
+        try:
+            cmds=[
+                {"command":"start","description":"Buka menu utama"},
+                {"command":"newpost","description":"create a new post"},
+                {"command":"profile","description":"My profile & kuota"},
+                {"command":"threads","description":"ON/OFF auto post Threads"},
+                {"command":"stats","description":"check your stats"},
+                {"command":"help","description":"answers to basic questions"}
+            ]
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/setMyCommands", json={"commands": cmds}, timeout=3)
+        except: pass
+        return f"V94 AUTO THREADS OK + COMMAND MENU - {THREADS_URL}",200
+
     init_db()
     data = request.get_json(force=True, silent=True) or {}
     if "message" in data:
         msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id); user=get_user(uid); text=msg.get("text",""); caption=msg.get("caption","")
         if "from" in msg: user["name"]=(msg["from"].get("first_name","")+" "+(msg["from"].get("last_name","") or "")).strip() or "-"; user["username"]=msg["from"].get("username","")
         if text.startswith("/start"): send(chat_id, welcome_text(user), main_kb(is_admin(chat_id)))
-        elif text.lower().startswith("/help"): send(chat_id, f"⚙️ COMMAND\n{SEP}\n/start\n/help\n/profile /me\n/post\n/threads\n/stats\n/limit\n{SEP}\nThreads: {'ON' if user['threads_on'] else 'OFF'}\n{THREADS_URL}", back_kb())
+        elif text.lower().startswith("/help"): send(chat_id, f"⚙️ COMMAND\n{SEP}\n/start\n/help\n/profile /me\n/post /newpost\n/threads\n/stats\n/limit\n{SEP}\nThreads: {'ON' if user['threads_on'] else 'OFF'}\n{THREADS_URL}", back_kb())
         elif text.lower().startswith("/profile") or text.lower().startswith("/me"): send(chat_id, f"My Profile\n{SEP}\nName: {user['name']}\nMedia: {user['today_media']}/5\nText: {user['today_text']}/5\nThreads: {'ON ✅' if user['threads_on'] else 'OFF ❌'}\n{THREADS_URL}", back_kb())
-        elif text.lower().startswith("/post"): send(chat_id, f"Post\n{SEP}\nKirim teks/foto/video langsung. Auto watermark + {HASHTAG}", back_kb())
+        elif text.lower().startswith("/post") or text.lower().startswith("/newpost"): send(chat_id, f"Post\n{SEP}\nKirim teks/foto/video langsung. Auto watermark + {HASHTAG}", back_kb())
         elif text.lower().startswith("/threads"):
             kb={"inline_keyboard": [[{"text": "ON ✅", "callback_data": "threads_on"}, {"text": "OFF ❌", "callback_data": "threads_off"}], [{"text": "« Back", "callback_data": "back_home"}]]}
             send(chat_id, f"Threads Setting\n{SEP}\nStatus: {'ON ✅' if user['threads_on'] else 'OFF ❌'}\nLink: {THREADS_URL}\n\nKalo ON = auto post ke Threads juga", kb)
