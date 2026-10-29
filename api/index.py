@@ -9,100 +9,107 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID") or "@menfessangel"
 ADMIN_ID = os.getenv("ADMIN_ID") or ""
 DATABASE_URL = os.getenv("DATABASE_URL")
-THREADS_URL = os.getenv("THREADS") or os.getenv("THREADS_URL") or "https://www.threads.net/@jogjalend"
+THREADS_URL = os.getenv("THREADS") or os.getenv("THREADS_URL") or "https://threads.net/jogjalend"
 THREADS_USER_ID = os.getenv("THREADS_USER_ID")
 THREADS_TOKEN = os.getenv("THREADS_TOKEN")
 WIB = timezone(timedelta(hours=7))
 SEP = "-------------------------------------------"
 HASHTAG = "#jogjalend"
 
-USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0})
+USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0, "admin_target": "both"})
 
 def get_db():
     if not DATABASE_URL: return None
     try: return psycopg2.connect(DATABASE_URL, connect_timeout=5)
     except: return None
-
 def init_db():
-    db = get_db()
+    db=get_db()
     if not db: return
     try:
-        cur = db.cursor()
-        cur.execute("CREATE TABLE IF NOT EXISTS menfess_users (user_id TEXT PRIMARY KEY, name TEXT, username TEXT, threads_on BOOLEAN DEFAULT FALSE, today_text INT DEFAULT 0, today_media INT DEFAULT 0, last_date TEXT, banned BOOLEAN DEFAULT FALSE, total_text INT DEFAULT 0, total_media INT DEFAULT 0, total_chars INT DEFAULT 0)")
+        cur=db.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS menfess_users (user_id TEXT PRIMARY KEY, name TEXT, username TEXT, threads_on BOOLEAN DEFAULT FALSE, today_text INT DEFAULT 0, today_media INT DEFAULT 0, last_date TEXT, banned BOOLEAN DEFAULT FALSE, total_text INT DEFAULT 0, total_media INT DEFAULT 0, total_chars INT DEFAULT 0, admin_target TEXT DEFAULT 'both')")
+        # add column if not exists
+        try: cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS admin_target TEXT DEFAULT 'both'")
+        except: pass
         db.commit(); cur.close(); db.close()
     except: pass
-
 def load_user_from_db(uid):
-    db = get_db()
+    db=get_db()
     if not db: return None
     try:
-        cur = db.cursor()
-        cur.execute("SELECT name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars FROM menfess_users WHERE user_id=%s", (uid,))
-        row = cur.fetchone(); cur.close(); db.close()
-        if row: return {"name":row[0] or "", "username":row[1] or "", "threads_on":row[2] or False, "today_text":row[3] or 0, "today_media":row[4] or 0, "last_date":row[5] or "", "banned":row[6] or False, "total_text":row[7] or 0, "total_media":row[8] or 0, "total_chars":row[9] or 0}
+        cur=db.cursor()
+        cur.execute("SELECT name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target FROM menfess_users WHERE user_id=%s",(uid,))
+        row=cur.fetchone(); cur.close(); db.close()
+        if row: return {"name":row[0] or "", "username":row[1] or "", "threads_on":row[2] or False, "today_text":row[3] or 0, "today_media":row[4] or 0, "last_date":row[5] or "", "banned":row[6] or False, "total_text":row[7] or 0, "total_media":row[8] or 0, "total_chars":row[9] or 0, "admin_target":row[10] or "both"}
     except: return None
     return None
-
-def save_user_to_db(uid, user):
-    db = get_db()
+def save_user_to_db(uid,user):
+    db=get_db()
     if not db: return
     try:
-        cur = db.cursor()
-        cur.execute("INSERT INTO menfess_users (user_id, name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (user_id) DO UPDATE SET name=%s, username=%s, threads_on=%s, today_text=%s, today_media=%s, last_date=%s, banned=%s, total_text=%s, total_media=%s, total_chars=%s",
-                    (uid, user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars",0),
-                     user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars",0)))
+        cur=db.cursor()
+        cur.execute("INSERT INTO menfess_users (user_id, name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (user_id) DO UPDATE SET name=%s, username=%s, threads_on=%s, today_text=%s, today_media=%s, last_date=%s, banned=%s, total_text=%s, total_media=%s, total_chars=%s, admin_target=%s",
+                    (uid,user["name"],user["username"],user["threads_on"],user["today_text"],user["today_media"],user["last_date"],user["banned"],user["total_text"],user["total_media"],user.get("total_chars",0),user.get("admin_target","both"),
+                     user["name"],user["username"],user["threads_on"],user["today_text"],user["today_media"],user["last_date"],user["banned"],user["total_text"],user["total_media"],user.get("total_chars",0),user.get("admin_target","both")))
         db.commit(); cur.close(); db.close()
     except: pass
-
 def get_user(uid):
-    u = USERS[uid]
-    if u["last_date"] == "" and DATABASE_URL:
-        d = load_user_from_db(uid)
+    u=USERS[uid]
+    if u["last_date"]=="" and DATABASE_URL:
+        d=load_user_from_db(uid)
         if d: USERS[uid]=d; u=USERS[uid]
-    today = datetime.now(WIB).strftime("%Y-%m-%d")
-    if u["last_date"] != today: u["today_text"]=0; u["today_media"]=0; u["last_date"]=today; save_user_to_db(uid, u)
+    today=datetime.now(WIB).strftime("%Y-%m-%d")
+    if u["last_date"]!=today: u["today_text"]=0; u["today_media"]=0; u["last_date"]=today; save_user_to_db(uid,u)
     return u
-
 def is_admin(uid): return str(uid) in ADMIN_ID.split(",") if ADMIN_ID else False
-def send(chat_id, text, kb=None):
-    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True}
+def send(chat_id,text,kb=None):
+    payload={"chat_id":chat_id,"text":text,"parse_mode":"HTML","disable_web_page_preview":True}
     if kb: payload["reply_markup"]=kb
-    try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload, timeout=10)
+    try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json=payload,timeout=10)
     except: pass
+
 def welcome_text(user): return f"Hi {user['name']}!\n{SEP}\nPublish to @menfessangel\nTap Post!\n\nKuota\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5"
 def back_kb(): return {"inline_keyboard": [[{"text": "<< Back", "callback_data": "back_home"}]]}
 def main_kb(is_ad=False):
     kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
-    if is_ad: kb["inline_keyboard"].append([{"text": "ADMIN PANEL", "callback_data": "admin_panel"}])
+    if is_ad: kb["inline_keyboard"].append([{"text": "🔐 ADMIN PANEL", "callback_data": "admin_panel"}])
     return kb
+def admin_kb(user):
+    target=user.get("admin_target","both")
+    return {"inline_keyboard": [
+        [{"text": f"Target: {target.upper()}", "callback_data": "admin_noop"}],
+        [{"text": "✅ Channel Only" if target=="channel" else "Channel Only", "callback_data": "admin_set_channel"}],
+        [{"text": "✅ Threads Only" if target=="threads" else "Threads Only", "callback_data": "admin_set_threads"}],
+        [{"text": "✅ Both (Channel+Threads)" if target=="both" else "Both", "callback_data": "admin_set_both"}],
+        [{"text": "<< Back", "callback_data": "back_home"}]
+    ]}
+
 def find_logo():
-    for p in ["logo.png", "../logo.png", os.path.join(os.path.dirname(__file__), "../logo.png")]:
+    for p in ["logo.png","../logo.png",os.path.join(os.path.dirname(__file__),"../logo.png")]:
         if os.path.exists(p): return p
     return None
 def download_file(file_id):
     try:
-        info = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile", params={"file_id": file_id}, timeout=5).json()
-        fp = info["result"]["file_path"]
-        return requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}", timeout=8).content
+        info=requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile",params={"file_id":file_id},timeout=5).json()
+        fp=info["result"]["file_path"]
+        return requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}",timeout=8).content
     except: return None
 def add_watermark(photo_bytes):
     try:
-        lp = find_logo()
+        lp=find_logo()
         if not lp: return None
-        base = Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
-        logo = Image.open(lp).convert("RGBA")
-        w,h = base.size; sz = int(w*0.13); logo = logo.resize((sz,sz), Image.LANCZOS)
-        overlay = Image.new("RGBA", base.size, (0,0,0,0)); overlay.paste(logo, (12, 12), logo)
-        combined = Image.alpha_composite(base, overlay).convert("RGB")
-        bio = io.BytesIO(); combined.save(bio, "JPEG", quality=92); bio.seek(0); return bio
+        base=Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
+        logo=Image.open(lp).convert("RGBA")
+        w,h=base.size; sz=int(w*0.13); logo=logo.resize((sz,sz),Image.LANCZOS)
+        overlay=Image.new("RGBA",base.size,(0,0,0,0)); overlay.paste(logo,(12,12),logo)
+        combined=Image.alpha_composite(base,overlay).convert("RGB")
+        bio=io.BytesIO(); combined.save(bio,"JPEG",quality=92); bio.seek(0); return bio
     except: return None
-def get_font(size, bold=False):
-    paths = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]
-    for p in paths:
-        try:
-            if os.path.exists(p): return ImageFont.truetype(p, size)
-        except: pass
+def get_font(size,bold=False):
+    try:
+        p="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        if os.path.exists(p): return ImageFont.truetype(p,size)
+    except: pass
     return ImageFont.load_default()
 
 def make_today_chart(user):
@@ -116,7 +123,7 @@ def make_today_chart(user):
         draw.text((30,55),f"{datetime.now(WIB).strftime('%d %b')} - {user['today_text']+user['today_media']}/10 today",fill='#71717A',font=f_small)
         hours=["08:00","10:00","12:00","14:00","16:00","18:00","20:00","22:00"]
         total=user['today_text']+user['today_media']
-        highs=[0]*8 if total==0 else [max(0, random.randint(0,2)+ (total//8)) for _ in hours]
+        highs=[0]*8 if total==0 else [max(0, random.randint(0,2)+(total//8)) for _ in hours]
         max_val=max(highs) if max(highs)>0 else 3
         max_val=max(max_val,3)
         ct,cb,cl,cr=120,580,70,1050
@@ -139,7 +146,6 @@ def make_today_chart(user):
             if v>0: draw.text((xc-4,yh-18),str(v),fill='#A1A1AA',font=f_small)
         bio=io.BytesIO(); img.save(bio,format='JPEG',quality=95); bio.seek(0); return bio
     except: return None
-
 def make_weekly_chart(user):
     try:
         W,H=1080,650
@@ -147,13 +153,13 @@ def make_weekly_chart(user):
         draw=ImageDraw.Draw(img)
         f_title=get_font(32,True); f_small=get_font(18)
         draw.rectangle([0,0,W,85],fill='#161618')
-        draw.text((30,18),"WEEKLY 7D - Performance",fill='white',font=f_title)
+        draw.text((30,18),"WEEKLY 7D",fill='white',font=f_title)
         draw.text((30,55),f"{user['name'][:20]} - Last 7 days",fill='#71717A',font=f_small)
         days=["22","23","24","25","26","27","28"]
         vals=[random.randint(1,5) for _ in days]
-        if user['total_text']>0:
-            vals=[min(5, max(0, user['total_text']//7 + random.randint(-1,2))) for _ in days]
+        if user['total_text']>0: vals=[min(5,max(0,user['total_text']//7+random.randint(-1,2))) for _ in days]
         max_v=max(vals) if max(vals)>0 else 5
+        max_v=max(max_v,1)
         ct,cb,cl,cr=120,580,70,1050
         ch=cb-ct
         for i in range(5):
@@ -166,23 +172,21 @@ def make_weekly_chart(user):
             v=vals[idx]
             def to_y(val): return cb-int(val/max_v*ch*0.85)
             yv=to_y(v)
-            # candle weekly
             color='#3B82F6' if idx%2==0 else '#8B5CF6'
             draw.line([(xc,yv),(xc,cb)],fill=color,width=2)
             draw.rectangle([xc-20,yv,xc+20,cb],fill=color)
             draw.text((xc-6,yv-22),str(v),fill='white',font=f_small)
-            draw.text((xc-10,cb+10),f"OCT {days[idx]}",fill='#A1A1AA',font=f_small)
+            draw.text((xc-10,cb+10),f"{days[idx]}",fill='#A1A1AA',font=f_small)
         bio=io.BytesIO(); img.save(bio,format='JPEG',quality=95); bio.seek(0); return bio
-    except Exception as e: print(e); return None
-
-def send_stats(chat_id, user, mode="today"):
+    except: return None
+def send_stats(chat_id,user,mode="today"):
     try:
         if mode=="today":
             chart=make_today_chart(user)
             cap=f"TODAY 1D - {user['name']}\n{user['today_text']} text | {user['today_media']} media\nPer jam 08:00-22:00 - Restart 00:00 WIB"
         else:
             chart=make_weekly_chart(user)
-            cap=f"WEEKLY 7D - {user['name']}\nLast 7 days trend\nTotal {user['total_text']} text {user['total_media']} media"
+            cap=f"WEEKLY 7D - {user['name']}\nLast 7 days trend"
         kb={"inline_keyboard": [[{"text":"• TODAY 1D" if mode=="today" else "TODAY 1D","callback_data":"stats_today"},{"text":"• WEEKLY 7D" if mode=="weekly" else "WEEKLY 7D","callback_data":"stats_weekly"}],[{"text":"<< Back","callback_data":"back_home"}]]}
         if chart:
             chart.seek(0)
@@ -191,8 +195,7 @@ def send_stats(chat_id, user, mode="today"):
                 send(chat_id,"Switch mode:",kb)
                 return
         send(chat_id,cap,kb)
-    except Exception as e:
-        print(f"stats {e}"); send(chat_id,"Stats error",back_kb())
+    except: send(chat_id,"Stats error",back_kb())
 
 def post_to_threads_auto(t):
     try:
@@ -204,15 +207,18 @@ def post_to_threads_auto(t):
         return "id" in r2
     except: return False
 
-def send_success(chat_id, user, ch_msg_id):
+def send_success(chat_id,user,ch_msg_id,admin_target="both"):
     try:
         url=f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_msg_id}" if ch_msg_id else f"https://t.me/{CHANNEL_ID.replace('@','')}"
         buttons=[]
-        if user.get("threads_on"): buttons.append([{"text": "See on Threads", "url": THREADS_URL}])
-        buttons.append([{"text": "See on channel", "url": url}])
-        buttons.append([{"text": "Delete", "callback_data": f"del_{ch_msg_id}"}])
+        if admin_target in ["threads","both"] and (user.get("threads_on") or is_admin(chat_id)):
+            buttons.append([{"text": "See on Threads", "url": THREADS_URL}])
+        if admin_target in ["channel","both"] and ch_msg_id:
+            buttons.append([{"text": "See on channel", "url": url}])
+        if ch_msg_id: buttons.append([{"text": "Delete", "callback_data": f"del_{ch_msg_id}"}])
         buttons.append([{"text": "Back", "callback_data": "back_home"}])
-        send(chat_id, f"Menfess sent!\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5", {"inline_keyboard": buttons})
+        note = f"→ {admin_target.upper()}" if is_admin(chat_id) else ""
+        send(chat_id, f"Menfess sent! {note}\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5", {"inline_keyboard": buttons})
     except: pass
 
 @app.route("/", methods=["GET","POST"])
@@ -220,62 +226,118 @@ def send_success(chat_id, user, ch_msg_id):
 def index():
     try:
         init_db()
-        if request.method=="GET": return f"V105 TODAY+WEEKLY OK",200
-        data = request.get_json(force=True, silent=True) or {}
+        if request.method=="GET": return f"V106 ADMIN TARGET OK",200
+        data=request.get_json(force=True,silent=True) or {}
         if "message" in data:
             msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id); user=get_user(uid); text=msg.get("text",""); caption=msg.get("caption","")
             if "from" in msg:
-                raw = (msg["from"].get("first_name","")+" "+(msg["from"].get("last_name","") or "")).strip() or "-"
-                user["name"] = raw.encode('ascii','ignore').decode('ascii') or "User"
+                raw=(msg["from"].get("first_name","")+" "+(msg["from"].get("last_name","") or "")).strip() or "-"
+                user["name"]=raw.encode('ascii','ignore').decode('ascii') or "User"
                 user["username"]=msg["from"].get("username","")
-            if text.startswith("/start"): send(chat_id, welcome_text(user), main_kb(is_admin(chat_id)))
-            elif text.lower().startswith("/stats"): send_stats(chat_id, user, "today")
-            elif text.lower().startswith("/profile"): send(chat_id, f"My Profile\n{SEP}\nName: {user['name']}", back_kb())
+            if text.startswith("/start"): send(chat_id,welcome_text(user),main_kb(is_admin(chat_id)))
+            elif text.lower().startswith("/stats"): send_stats(chat_id,user,"today")
             elif not user["banned"]:
                 if text and not text.startswith("/") and len(text)>=3:
-                    if user["today_text"]>=5: send(chat_id, f"Limit 5/5\n{SEP}\nReset 00:00 WIB", back_kb())
+                    if user["today_text"]>=5: send(chat_id,f"Limit 5/5\n{SEP}\nReset 00:00 WIB",back_kb())
                     else:
                         clean=text.strip()
                         if HASHTAG.lower() not in clean.lower(): clean=f"{clean} {HASHTAG}"
                         try:
-                            r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": CHANNEL_ID, "text": clean, "parse_mode": "HTML"}, timeout=5).json()
-                            ch_id=r.get("result",{}).get("message_id")
-                            if user.get("threads_on"): post_to_threads_auto(clean)
+                            target = user.get("admin_target","both") if is_admin(chat_id) else "both"
+                            # if user biasa, threads_on menentukan
+                            if not is_admin(chat_id):
+                                target = "both" if user.get("threads_on") else "channel"
+                            
+                            ch_id=None
+                            posted_threads=False
+                            if target in ["channel","both"]:
+                                r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":CHANNEL_ID,"text":clean,"parse_mode":"HTML"},timeout=5).json()
+                                ch_id=r.get("result",{}).get("message_id")
+                            if target in ["threads","both"]:
+                                if post_to_threads_auto(clean): posted_threads=True
+                                elif is_admin(chat_id) and target=="threads":
+                                    # tetap anggap sukses walau channel skip
+                                    pass
+                            
                             user["today_text"]+=1; user["total_text"]+=1; user["total_chars"]=user.get("total_chars",0)+len(text)
-                            save_user_to_db(uid, user); send_success(chat_id, user, ch_id)
-                        except: pass
+                            save_user_to_db(uid,user); send_success(chat_id,user,ch_id,target)
+                        except Exception as e: print(e)
                 if "photo" in msg or "video" in msg:
-                    if user["today_media"]>=5: send(chat_id, f"Limit 5/5", back_kb())
+                    if user["today_media"]>=5: send(chat_id,f"Limit 5/5",back_kb())
                     else:
                         try:
                             fid=msg["photo"][-1]["file_id"] if "photo" in msg else msg.get("video",{}).get("file_id")
                             is_photo="photo" in msg
                             base_cap=caption.strip() if caption else HASHTAG
                             if HASHTAG.lower() not in base_cap.lower(): base_cap=f"{base_cap} {HASHTAG}"
+                            
+                            target = user.get("admin_target","both") if is_admin(chat_id) else "both"
+                            if not is_admin(chat_id):
+                                target = "both" if user.get("threads_on") else "channel"
+                            
                             ch_id=None
-                            if is_photo:
-                                raw=download_file(fid); wm=add_watermark(raw) if raw else None
-                                if wm: r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": base_cap, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", wm, "image/jpeg")}, timeout=15).json(); ch_id=r.get("result",{}).get("message_id")
-                                else: r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=5).json(); ch_id=r.get("result",{}).get("message_id")
-                            else: r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=8).json(); ch_id=r.get("result",{}).get("message_id")
-                            if user.get("threads_on"): post_to_threads_auto(base_cap)
+                            if target in ["channel","both"]:
+                                if is_photo:
+                                    raw=download_file(fid); wm=add_watermark(raw) if raw else None
+                                    if wm: r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",data={"chat_id":CHANNEL_ID,"caption":base_cap,"parse_mode":"HTML"},files={"photo":("wm.jpg",wm,"image/jpeg")},timeout=15).json(); ch_id=r.get("result",{}).get("message_id")
+                                    else: r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",json={"chat_id":CHANNEL_ID,"photo":fid,"caption":base_cap,"parse_mode":"HTML"},timeout=5).json(); ch_id=r.get("result",{}).get("message_id")
+                                else: r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo",json={"chat_id":CHANNEL_ID,"video":fid,"caption":base_cap,"parse_mode":"HTML"},timeout=8).json(); ch_id=r.get("result",{}).get("message_id")
+                            if target in ["threads","both"]:
+                                post_to_threads_auto(base_cap)
+                            
                             user["today_media"]+=1; user["total_media"]+=1
-                            save_user_to_db(uid, user); send_success(chat_id, user, ch_id)
-                        except: pass
+                            save_user_to_db(uid,user); send_success(chat_id,user,ch_id,target)
+                        except Exception as e: print(e)
         if "callback_query" in data:
             cq=data["callback_query"]; chat_id=cq["message"]["chat"]["id"]; uid=str(chat_id); user=get_user(uid); cdata=cq["data"]
-            try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id": cq["id"]}, timeout=2)
+            try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",json={"callback_query_id":cq["id"]},timeout=2)
             except: pass
-            if cdata=="stats": send_stats(chat_id, user, "today")
-            elif cdata=="stats_today": send_stats(chat_id, user, "today")
-            elif cdata=="stats_weekly": send_stats(chat_id, user, "weekly")
-            elif cdata=="back_home": send(chat_id, welcome_text(user), main_kb(is_admin(chat_id)))
+            if cdata=="back_home":
+                send(chat_id,welcome_text(user),main_kb(is_admin(chat_id)))
+            elif cdata=="my_profile":
+                send(chat_id,f"My Profile\n{SEP}\nName: {user['name']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5\nThreads: {'ON' if user.get('threads_on') else 'OFF'}",back_kb())
+            elif cdata=="post":
+                t=user.get("admin_target","both")
+                extra=f"\nAdmin target: {t.upper()}" if is_admin(chat_id) else ""
+                send(chat_id,f"Post Menfess\n{SEP}\nKetik text/media auto tag {HASHTAG}{extra}",back_kb())
+            elif cdata=="threads":
+                kb_short={"inline_keyboard": [[{"text": f"Threads: {'ON ✅' if user.get('threads_on') else 'OFF ❌'} (Tap toggle)", "callback_data": "threads_toggle"}], [{"text": "🔗 threads.net/jogjalend", "url": THREADS_URL}], [{"text": "<< Back", "callback_data": "back_home"}]]}
+                send(chat_id,f"Threads Setting\n{SEP}\nStatus: {'ON' if user.get('threads_on') else 'OFF'}\nLink: threads.net/jogjalend",kb_short)
+            elif cdata=="threads_toggle":
+                user["threads_on"]=not user.get("threads_on",False)
+                save_user_to_db(uid,user)
+                kb_short={"inline_keyboard": [[{"text": f"Threads: {'ON ✅' if user.get('threads_on') else 'OFF ❌'} (Tap toggle)", "callback_data": "threads_toggle"}], [{"text": "🔗 threads.net/jogjalend", "url": THREADS_URL}], [{"text": "<< Back", "callback_data": "back_home"}]]}
+                send(chat_id,f"Threads {'ON ✅' if user['threads_on'] else 'OFF ❌'}!\nLink: threads.net/jogjalend",kb_short)
+            elif cdata=="help":
+                send(chat_id,f"Help\n{SEP}\n1. /start\n2. Kirim text/media auto ke channel\n3. Limit 5/5 reset 00:00\n4. /stats today+weekly",back_kb())
+            elif cdata=="stats": send_stats(chat_id,user,"today")
+            elif cdata=="stats_today": send_stats(chat_id,user,"today")
+            elif cdata=="stats_weekly": send_stats(chat_id,user,"weekly")
+            elif cdata=="admin_panel":
+                if is_admin(chat_id):
+                    send(chat_id,f"🛠 ADMIN PANEL\n{SEP}\nHalo admin {user['name']}\nPilih target post:\nCurrent: {user.get('admin_target','both').upper()}\n\nChannel Only = cuma ke @menfessangel\nThreads Only = cuma ke threads.net/jogjalend\nBoth = ke dua-duanya",admin_kb(user))
+                else:
+                    send(chat_id,"Not admin",back_kb())
+            elif cdata=="admin_set_channel":
+                if is_admin(chat_id):
+                    user["admin_target"]="channel"; save_user_to_db(uid,user)
+                    send(chat_id,f"✅ Set ke CHANNEL ONLY\nSekarang post lu cuma masuk ke channel @menfessangel",admin_kb(user))
+            elif cdata=="admin_set_threads":
+                if is_admin(chat_id):
+                    user["admin_target"]="threads"; save_user_to_db(uid,user)
+                    send(chat_id,f"✅ Set ke THREADS ONLY\nSekarang post lu cuma masuk ke threads.net/jogjalend",admin_kb(user))
+            elif cdata=="admin_set_both":
+                if is_admin(chat_id):
+                    user["admin_target"]="both"; save_user_to_db(uid,user)
+                    send(chat_id,f"✅ Set ke BOTH\nPost lu masuk ke channel + threads",admin_kb(user))
+            elif cdata=="admin_noop":
+                pass
             elif cdata.startswith("del_"):
                 mid=cdata.replace("del_","")
                 if mid.isdigit():
-                    try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id": CHANNEL_ID, "message_id": int(mid)}, timeout=3)
+                    try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",json={"chat_id":CHANNEL_ID,"message_id":int(mid)},timeout=3)
                     except: pass
-                send(chat_id, "Deleted", back_kb())
+                send(chat_id,"Deleted",back_kb())
         return "ok",200
     except Exception as e:
         print(f"GLOBAL {e}"); import traceback; traceback.print_exc(); return "ok",200
