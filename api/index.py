@@ -1,5 +1,5 @@
 from flask import Flask, request
-import os, requests, io, psycopg2, random
+import os, requests, io, psycopg2, random, re
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
@@ -15,6 +15,30 @@ THREADS_TOKEN = os.getenv("THREADS_TOKEN")
 WIB = timezone(timedelta(hours=7))
 SEP = "●-----------------------------------------------------●"
 HASHTAG = "#jogjalend"
+
+# === FONT SANS BIASA + KEEP MENTIONS/LINK CLICKABLE ===
+def to_fancy(text):
+    protected = []
+    def save_match(m):
+        protected.append(m.group(0))
+        return f"__P{len(protected)-1}__"
+    # Lindungi yang harus tetap klikable
+    text = re.sub(r'@\w+', save_match, text)
+    text = re.sub(r'#\w+', save_match, text)
+    text = re.sub(r'https?://\S+|threads\.net/\S+|t\.me/\S+', save_match, text)
+    
+    res=""
+    for c in text:
+        if 'A' <= c <= 'Z': res+=chr(0x1D5A0 + ord(c)-65)
+        elif 'a' <= c <= 'z': res+=chr(0x1D5BA + ord(c)-97)
+        elif '0' <= c <= '9': res+=chr(0x1D7E2 + ord(c)-48)
+        else: res+=c
+    
+    for i, orig in enumerate(protected):
+        res = res.replace(f"__P{i}__", orig)
+    return res
+
+def F(t): return to_fancy(t)
 
 USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0, "admin_target": "both"})
 
@@ -61,20 +85,28 @@ def get_user(uid):
     if u["last_date"]!=today: u["today_text"]=0; u["today_media"]=0; u["last_date"]=today; save_user_to_db(uid,u)
     return u
 def is_admin(uid): return str(uid) in ADMIN_ID.split(",") if ADMIN_ID else False
+
 def send_message(chat_id,text,kb=None):
-    payload={"chat_id":chat_id,"text":text,"parse_mode":"HTML","disable_web_page_preview":True}
+    if kb and "inline_keyboard" in kb:
+        for row in kb["inline_keyboard"]:
+            for btn in row:
+                if "text" in btn and "url" not in btn:
+                    btn["text"]=F(btn["text"])
+    payload={"chat_id":chat_id,"text":F(text),"parse_mode":"HTML","disable_web_page_preview":True}
     if kb: payload["reply_markup"]=kb
     try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json=payload,timeout=10)
     except: pass
+
 def get_welcome_text(user): return f"Hi {user['name']}!\n{SEP}\nPublish to @menfessangel\nTap Post!\n\nKuota\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5"
 def get_back_keyboard(): return {"inline_keyboard": [[{"text": "<< Back", "callback_data": "back_home"}]]}
 def get_main_keyboard(is_ad=False):
     kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
-    if is_ad: kb["inline_keyboard"].append([{"text": "🛠 ADMIN PANEL", "callback_data": "admin_panel"}])
+    if is_ad: kb["inline_keyboard"].append([{"text": "🔐 ADMIN PANEL", "callback_data": "admin_panel"}])
     return kb
 def get_admin_keyboard(user):
     target=user.get("admin_target","both")
     return {"inline_keyboard": [[{"text": f"Target: {target.upper()}", "callback_data": "admin_noop"}], [{"text": "✅ Channel Only" if target=="channel" else "Channel Only", "callback_data": "admin_set_channel"}], [{"text": "✅ Threads Only" if target=="threads" else "Threads Only", "callback_data": "admin_set_threads"}], [{"text": "✅ Both (Channel+Threads)" if target=="both" else "Both", "callback_data": "admin_set_both"}], [{"text": "<< Back", "callback_data": "back_home"}]]}
+
 def find_logo():
     for p in ["logo.png","../logo.png",os.path.join(os.path.dirname(__file__),"../logo.png")]:
         if os.path.exists(p): return p
@@ -210,7 +242,7 @@ def send_success(chat_id,user,ch_msg_id,target="both"):
 def main_handler():
     try:
         init_db()
-        if request.method=="GET": return "V106.2 FORMAL RINGKAS OK",200
+        if request.method=="GET": return "V106.4 SANS CLICKABLE OK",200
         data=request.get_json(force=True,silent=True) or {}
         if "message" in data:
             msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id); user=get_user(uid); text=msg.get("text",""); caption=msg.get("caption","")
@@ -262,54 +294,51 @@ def main_handler():
             except: pass
             if cdata=="back_home": send_message(chat_id,get_welcome_text(user),get_main_keyboard(is_admin(chat_id)))
             elif cdata=="my_profile": send_message(chat_id,f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5",get_back_keyboard())
-            elif cdata=="post":
-                t=user.get("admin_target","both")
-                extra=f"\nAdmin target: {t.upper()}" if is_admin(chat_id) else ""
-                send_message(chat_id,f"Post Menfess\n{SEP}\nKetik langsung text / kirim media + caption\nAuto tag {HASHTAG}{extra}",get_back_keyboard())
+            elif cdata=="post": send_message(chat_id,f"Post Menfess\n{SEP}\nKetik langsung text / kirim media + caption\nAuto tag {HASHTAG}",get_back_keyboard())
             elif cdata=="threads":
-                kb={"inline_keyboard": [[{"text": f"Threads: {'ON ✅' if user.get('threads_on') else 'OFF ❌'}", "callback_data": "threads_toggle"}], [{"text": "🔗 threads.net/jogjalend", "url": THREADS_URL}], [{"text": "<< Back", "callback_data": "back_home"}]]}
+                kb={"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "<< Back", "callback_data": "back_home"}]]}
                 send_message(chat_id,f"Threads Setting\n{SEP}\nStatus: {'ON' if user.get('threads_on') else 'OFF'}\nLink: threads.net/jogjalend",kb)
             elif cdata=="threads_toggle":
                 user["threads_on"]=not user.get("threads_on",False); save_user_to_db(uid,user)
-                kb={"inline_keyboard": [[{"text": f"Threads: {'ON ✅' if user.get('threads_on') else 'OFF ❌'}", "callback_data": "threads_toggle"}], [{"text": "🔗 threads.net/jogjalend", "url": THREADS_URL}], [{"text": "<< Back", "callback_data": "back_home"}]]}
-                send_message(chat_id,f"Threads {'ON ✅' if user['threads_on'] else 'OFF ❌'}!\nLink: threads.net/jogjalend",kb)
+                kb={"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "<< Back", "callback_data": "back_home"}]]}
+                send_message(chat_id,f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend",kb)
             elif cdata=="help":
                 send_message(chat_id, f"""Pusat Bantuan - @menfessangel Bot
 
-📝 PANDUAN PENGIRIMAN:
+PANDUAN PENGIRIMAN:
 - Ketik pesan teks Anda di sini
 - Kirim foto/video beserta caption
 - Otomatis ditambahkan tagar #jogjalend
 - Otomatis terbit di channel @menfessangel
 
-📊 BATAS HARIAN:
+BATAS HARIAN:
 - Batas 5 teks dan 5 media per hari
 - Reset setiap pukul 00:00 WIB
 - Gunakan /stats untuk melihat statistik
 
-🔗 INTEGRASI THREADS:
+INTEGRASI THREADS:
 - Pengaturan di menu Threads Setting
 - ON = terbit di threads.net/jogjalend juga
 - OFF = hanya terbit di channel
 
-🖇 DAFTAR PERINTAH:
+DAFTAR PERINTAH:
 /start - Menu utama
 /stats - Statistik TODAY 1D & WEEKLY 7D
 
-Bot Versi V106.2
+Bot Versi V106.4
 Author : @jogja_lend""", get_back_keyboard())
             elif cdata=="stats": send_stats(chat_id,user,"today")
             elif cdata=="stats_today": send_stats(chat_id,user,"today")
             elif cdata=="stats_weekly": send_stats(chat_id,user,"weekly")
             elif cdata=="admin_panel":
-                if is_admin(chat_id): send_message(chat_id,f"🛠 ADMIN PANEL\n{SEP}\nHalo admin {user['name']}\nCurrent: {user.get('admin_target','both').upper()}\n\nChannel Only = cuma ke channel\nThreads Only = cuma ke threads.net/jogjalend\nBoth = ke dua-duanya",get_admin_keyboard(user))
+                if is_admin(chat_id): send_message(chat_id,f"ADMIN PANEL\n{SEP}\nHalo admin {user['name']}\nCurrent: {user.get('admin_target','both').upper()}",get_admin_keyboard(user))
                 else: send_message(chat_id,"Not admin",get_back_keyboard())
             elif cdata=="admin_set_channel":
-                if is_admin(chat_id): user["admin_target"]="channel"; save_user_to_db(uid,user); send_message(chat_id,f"✅ Set ke CHANNEL ONLY",get_admin_keyboard(user))
+                if is_admin(chat_id): user["admin_target"]="channel"; save_user_to_db(uid,user); send_message(chat_id,f"Set ke CHANNEL ONLY",get_admin_keyboard(user))
             elif cdata=="admin_set_threads":
-                if is_admin(chat_id): user["admin_target"]="threads"; save_user_to_db(uid,user); send_message(chat_id,f"✅ Set ke THREADS ONLY",get_admin_keyboard(user))
+                if is_admin(chat_id): user["admin_target"]="threads"; save_user_to_db(uid,user); send_message(chat_id,f"Set ke THREADS ONLY",get_admin_keyboard(user))
             elif cdata=="admin_set_both":
-                if is_admin(chat_id): user["admin_target"]="both"; save_user_to_db(uid,user); send_message(chat_id,f"✅ Set ke BOTH",get_admin_keyboard(user))
+                if is_admin(chat_id): user["admin_target"]="both"; save_user_to_db(uid,user); send_message(chat_id,f"Set ke BOTH",get_admin_keyboard(user))
             elif cdata.startswith("del_"):
                 mid=cdata.replace("del_","")
                 if mid.isdigit():
