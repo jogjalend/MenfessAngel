@@ -68,7 +68,7 @@ def back_kb(): return {"inline_keyboard": [[{"text": "« Back", "callback_data":
 def admin_back_kb(): return {"inline_keyboard": [[{"text": "« Back to Admin", "callback_data": "admin_panel"}]]}
 def main_kb(is_admin_user=False):
     kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Verification", "callback_data": "verification"}, {"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
-    if is_admin_user: kb["inline_keyboard"].append([{"text": "🔐 ADMIN PANEL", "callback_data": "admin_panel"}])
+    if is_admin_user: kb["inline_keyboard"].append([{"text": "🛠 ADMIN PANEL", "callback_data": "admin_panel"}])
     return kb
 
 def find_logo():
