@@ -20,17 +20,13 @@ USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "t
 
 def get_db():
     if not DATABASE_URL: return None
-    try:
-        return psycopg2.connect(DATABASE_URL, connect_timeout=5)
+    try: return psycopg2.connect(DATABASE_URL, connect_timeout=5)
     except Exception as e:
-        print(f"get_db error: {e}")
-        return None
+        print(f"get_db error: {e}"); return None
 
 def init_db():
     db = get_db()
-    if not db: 
-        print("No DB")
-        return
+    if not db: return
     try:
         cur = db.cursor()
         cur.execute("CREATE TABLE IF NOT EXISTS menfess_users (user_id TEXT PRIMARY KEY, name TEXT, username TEXT, threads_on BOOLEAN DEFAULT FALSE, today_text INT DEFAULT 0, today_media INT DEFAULT 0, last_date TEXT, banned BOOLEAN DEFAULT FALSE, total_text INT DEFAULT 0, total_media INT DEFAULT 0, total_chars INT DEFAULT 0)")
@@ -42,11 +38,9 @@ def init_db():
         cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS today_text INT DEFAULT 0")
         cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS today_media INT DEFAULT 0")
         cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS last_date TEXT")
-        db.commit()
-        cur.close(); db.close()
+        db.commit(); cur.close(); db.close()
         print("DB migrated OK")
-    except Exception as e:
-        print(f"db init error: {e}")
+    except Exception as e: print(f"db init error: {e}")
 
 def load_user_from_db(uid):
     db = get_db()
@@ -54,12 +48,9 @@ def load_user_from_db(uid):
     try:
         cur = db.cursor()
         cur.execute("SELECT name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars FROM menfess_users WHERE user_id=%s", (uid,))
-        row = cur.fetchone()
-        cur.close(); db.close()
-        if row:
-            return {"name":row[0] or "", "username":row[1] or "", "threads_on":row[2] or False, "today_text":row[3] or 0, "today_media":row[4] or 0, "last_date":row[5] or "", "banned":row[6] or False, "total_text":row[7] or 0, "total_media":row[8] or 0, "total_chars":row[9] or 0}
-    except Exception as e:
-        print(f"load error: {e}")
+        row = cur.fetchone(); cur.close(); db.close()
+        if row: return {"name":row[0] or "", "username":row[1] or "", "threads_on":row[2] or False, "today_text":row[3] or 0, "today_media":row[4] or 0, "last_date":row[5] or "", "banned":row[6] or False, "total_text":row[7] or 0, "total_media":row[8] or 0, "total_chars":row[9] or 0}
+    except Exception as e: print(f"load error: {e}")
     return None
 
 def save_user_to_db(uid, user):
@@ -71,20 +62,15 @@ def save_user_to_db(uid, user):
                     (uid, user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars",0),
                      user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars",0)))
         db.commit(); cur.close(); db.close()
-    except Exception as e:
-        print(f"save error: {e}")
+    except Exception as e: print(f"save error: {e}")
 
 def get_user(uid):
     u = USERS[uid]
     if u["last_date"] == "" and DATABASE_URL:
         d = load_user_from_db(uid)
-        if d:
-            USERS[uid]=d
-            u=USERS[uid]
+        if d: USERS[uid]=d; u=USERS[uid]
     today = datetime.now(WIB).strftime("%Y-%m-%d")
-    if u["last_date"] != today:
-        u["today_text"]=0; u["today_media"]=0; u["last_date"]=today
-        save_user_to_db(uid, u)
+    if u["last_date"] != today: u["today_text"]=0; u["today_media"]=0; u["last_date"]=today; save_user_to_db(uid, u)
     return u
 
 def is_admin(uid): return str(uid) in ADMIN_ID.split(",") if ADMIN_ID else False
@@ -128,9 +114,7 @@ def add_watermark(photo_bytes):
         combined = Image.alpha_composite(base, overlay).convert("RGB")
         bio = io.BytesIO(); combined.save(bio, "JPEG", quality=92); bio.seek(0)
         return bio
-    except Exception as e:
-        print(f"wm error: {e}")
-        return None
+    except Exception as e: print(f"wm error: {e}"); return None
 
 # === STATS V1 DASHBOARD - PIL ===
 def make_personal_stats_chart(user):
@@ -171,8 +155,7 @@ def make_personal_stats_chart(user):
             bw = int(c['val']/max_v*150) if max_v>0 else 0
             bw = max(8, bw) if c['val']>0 else 0
             draw.rounded_rectangle([x+18, y+140, x+18+150, y+148], radius=4, fill='#27272A')
-            if bw>0:
-                draw.rounded_rectangle([x+18, y+140, x+18+bw, y+148], radius=4, fill=c['color'])
+            if bw>0: draw.rounded_rectangle([x+18, y+140, x+18+bw, y+148], radius=4, fill=c['color'])
 
         used = today_text + today_media
         draw.rounded_rectangle([30, 350, W-30, 480], radius=18, fill='#18181B')
@@ -180,8 +163,7 @@ def make_personal_stats_chart(user):
         draw.text((60, 400), f"{used} / 10 kuota kepake hari ini, sisa {10-used}", fill='#A1A1AA', font=font_sub)
         draw.rounded_rectangle([60, 435, W-60, 453], radius=10, fill='#27272A')
         prog = int(used/10*(W-120))
-        if prog>0:
-            draw.rounded_rectangle([60, 435, 60+prog, 453], radius=10, fill='#FFFFFF')
+        if prog>0: draw.rounded_rectangle([60, 435, 60+prog, 453], radius=10, fill='#FFFFFF')
 
         bio = io.BytesIO()
         img.save(bio, format='JPEG', quality=92)
@@ -189,6 +171,7 @@ def make_personal_stats_chart(user):
         return bio
     except Exception as e:
         print(f"chart error: {e}")
+        import traceback; traceback.print_exc()
         return None
 
 def send_stats(chat_id, user):
@@ -196,11 +179,16 @@ def send_stats(chat_id, user):
         chart = make_personal_stats_chart(user)
         caption = f"Stats - {user['name']}\nToday: {user['today_text']} text, {user['today_media']} media\nTotal: {user['total_text']} text, {user['total_media']} media\nChars: {user.get('total_chars',0)}"
         if chart:
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": caption}, files={"photo": chart}, timeout=12)
-            return
+            chart.seek(0)
+            files = {"photo": ("stats.jpg", chart, "image/jpeg")}
+            r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": caption}, files=files, timeout=20).json()
+            print(f"sendPhoto result: {r}")
+            if r.get("ok"): return
+            else: send(chat_id, caption + f"\n\nDebug: {str(r)[:200]}", back_kb()); return
         send(chat_id, caption, back_kb())
     except Exception as e:
         print(f"send_stats error: {e}")
+        import traceback; traceback.print_exc()
         send(chat_id, f"Stats - {user['name']}\nToday: {user['today_text']}/5 text, {user['today_media']}/5 media", back_kb())
 
 def post_to_threads_auto(text_content):
@@ -213,9 +201,7 @@ def post_to_threads_auto(text_content):
         url_pub = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish"
         r2 = requests.post(url_pub, data={"creation_id": creation_id, "access_token": THREADS_TOKEN}, timeout=10).json()
         return "id" in r2
-    except Exception as e:
-        print(f"threads error: {e}")
-        return False
+    except Exception as e: print(f"threads error: {e}"); return False
 
 def send_success(chat_id, user, ch_msg_id):
     try:
@@ -226,8 +212,7 @@ def send_success(chat_id, user, ch_msg_id):
         buttons.append([{"text": "Delete", "callback_data": f"del_{ch_msg_id}"}])
         buttons.append([{"text": "Back", "callback_data": "back_home"}])
         send(chat_id, f"Menfess sent!\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5\nThreads : {'ON' if user['threads_on'] else 'OFF'}\n{'Auto posted to Threads!' if user.get('threads_on') else ''}", {"inline_keyboard": buttons})
-    except Exception as e:
-        print(f"success error: {e}")
+    except Exception as e: print(f"success error: {e}")
 
 @app.route("/", methods=["GET","POST"])
 @app.route("/api/index", methods=["GET","POST"])
@@ -236,17 +221,10 @@ def index():
         init_db()
         if request.method=="GET":
             try:
-                cmds=[
-                    {"command":"start","description":"Buka menu utama"},
-                    {"command":"newpost","description":"create a new post"},
-                    {"command":"profile","description":"My profile & kuota"},
-                    {"command":"threads","description":"ON/OFF auto post Threads"},
-                    {"command":"stats","description":"check your stats"},
-                    {"command":"help","description":"answers to basic questions"}
-                ]
+                cmds=[{"command":"start","description":"Buka menu utama"},{"command":"newpost","description":"create a new post"},{"command":"profile","description":"My profile & kuota"},{"command":"threads","description":"ON/OFF auto post Threads"},{"command":"stats","description":"check your stats"},{"command":"help","description":"answers to basic questions"}]
                 requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/setMyCommands", json={"commands": cmds}, timeout=3)
             except: pass
-            return f"V99 FIX MIGRASI OK - {THREADS_URL}",200
+            return f"V100 FIX STATS IMG OK - {THREADS_URL}",200
 
         data = request.get_json(force=True, silent=True) or {}
         if "message" in data:
@@ -287,7 +265,7 @@ def index():
                             ch_id=None
                             if is_photo:
                                 raw=download_file(fid); wm=add_watermark(raw) if raw else None
-                                if wm: r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": base_cap, "parse_mode": "HTML"}, files={"photo": wm}, timeout=8).json(); ch_id=r.get("result",{}).get("message_id")
+                                if wm: r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": base_cap, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", wm, "image/jpeg")}, timeout=15).json(); ch_id=r.get("result",{}).get("message_id")
                                 else: r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=5).json(); ch_id=r.get("result",{}).get("message_id")
                             else: r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=8).json(); ch_id=r.get("result",{}).get("message_id")
                             if user.get("threads_on"): post_to_threads_auto(base_cap)
