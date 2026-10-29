@@ -13,7 +13,7 @@ THREADS_URL = os.getenv("THREADS") or "https://threads.net/jogjalend"
 THREADS_USER_ID = os.getenv("THREADS_USER_ID")
 THREADS_TOKEN = os.getenv("THREADS_TOKEN")
 WIB = timezone(timedelta(hours=7))
-SEP = "-------------------------------------------"
+SEP = "●-----------------------------------------------------●"
 HASHTAG = "#jogjalend"
 
 USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0, "admin_target": "both"})
