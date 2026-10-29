@@ -13,7 +13,7 @@ THREADS_URL = os.getenv("THREADS") or os.getenv("THREADS_URL") or "https://www.t
 THREADS_USER_ID = os.getenv("THREADS_USER_ID")
 THREADS_TOKEN = os.getenv("THREADS_TOKEN")
 WIB = timezone(timedelta(hours=7))
-SEP = "--------------------------"
+SEP = "-------------------------------------------"
 HASHTAG = "#jogjalend"
 
 USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0})
@@ -106,44 +106,34 @@ def add_watermark(photo_bytes):
         bio = io.BytesIO(); combined.save(bio, "JPEG", quality=92); bio.seek(0); return bio
     except: return None
 
-# CHART SIMPLE ANTI GAGAL DI VERCEL
 def make_personal_stats_chart(user):
     try:
-        W,H = 1000, 500
-        img = Image.new('RGB', (W,H), '#0D0D0F')
+        W, H = 1000, 600
+        img = Image.new('RGB', (W, H), '#121214')
         draw = ImageDraw.Draw(img)
         f_big = ImageFont.load_default()
         f_mid = ImageFont.load_default()
-
-        draw.rectangle([0,0,W,80], fill='#18181B')
-        draw.text((20, 15), f"STATS - {user['name'][:25]}", fill='white', font=f_big)
-        draw.text((20, 45), f"Chars: {user.get('total_chars',0)}", fill='white', font=f_mid)
-
-        x_gap=20; box_w=230; y1=110; y2=260
-        datas=[
-            (f"TODAY TEXT\n{user['today_text']}/5", '#3B82F6'),
-            (f"TODAY MEDIA\n{user['today_media']}/5", '#10B981'),
-            (f"TOTAL TEXT\n{user['total_text']}", '#8B5CF6'),
-            (f"TOTAL MEDIA\n{user['total_media']}", '#F59E0B'),
+        f_small = ImageFont.load_default()
+        draw.rectangle([0, 0, W, 90], fill='#18181B')
+        draw.text((30, 20), "Stats Dashboard", fill='white', font=f_big)
+        draw.text((30, 55), f"{user['name'][:22]} - Updated today", fill='#A1A1AA', font=f_small)
+        boxes = [
+            (30, 120, 480, 310, f"TODAY TEXT\n{user['today_text']}\n{user['today_text']}/5 today", '#3B82F6'),
+            (520, 120, 970, 310, f"TODAY MEDIA\n{user['today_media']}\n{user['today_media']}/5 today", '#10B981'),
+            (30, 340, 480, 530, f"TOTAL TEXT\n{user['total_text']}\nAll time - {user.get('total_chars',0)} chars", '#8B5CF6'),
+            (520, 340, 970, 530, f"TOTAL MEDIA\n{user['total_media']}\nAll time", '#F59E0B'),
         ]
-        x=20
-        for txt,color in datas:
-            draw.rectangle([x, y1, x+box_w, y2], fill='#1F1F23', outline=color, width=2)
-            draw.text((x+15, y1+20), txt, fill='white', font=f_mid)
-            x+=box_w+20
-
-        used = user['today_text'] + user['today_media']
-        draw.rectangle([20, 300, W-20, 380], fill='#18181B')
-        draw.text((30, 310), f"Daily {used}/10 used - sisa {10-used}", fill='white', font=f_mid)
-        draw.rectangle([30, 340, W-30, 355], fill='#27272A')
-        if used>0:
-            prog = int((W-60)*used/10)
-            draw.rectangle([30, 340, 30+prog, 355], fill='white')
-
+        for x1, y1, x2, y2, txt, color in boxes:
+            draw.rectangle([x1, y1, x2, y2], fill='#1E1E22', outline='#2A2A30', width=2)
+            draw.rectangle([x1, y1, x2, y1+5], fill=color)
+            lines = txt.split('\n')
+            draw.text((x1+25, y1+20), lines[0], fill='#A1A1AA', font=f_small)
+            draw.text((x1+25, y1+55), lines[1], fill='white', font=f_big)
+            draw.text((x1+25, y1+130), lines[2], fill=color, font=f_small)
         bio = io.BytesIO()
-        img.save(bio, format='JPEG', quality=85)
+        img.save(bio, format='JPEG', quality=90)
         bio.seek(0)
-        print(f"Chart OK {bio.getbuffer().nbytes} bytes")
+        print(f"Chart OK {bio.getbuffer().nbytes}")
         return bio
     except Exception as e:
         print(f"chart error {e}")
@@ -192,7 +182,7 @@ def send_success(chat_id, user, ch_msg_id):
 def index():
     try:
         init_db()
-        if request.method=="GET": return f"V102 CHART FIX OK - {THREADS_URL}",200
+        if request.method=="GET": return f"V102 OPSI 2 OK - {THREADS_URL}",200
         data = request.get_json(force=True, silent=True) or {}
         if "message" in data:
             msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id); user=get_user(uid); text=msg.get("text",""); caption=msg.get("caption","")
