@@ -9,7 +9,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID") or "@menfessangel"
 ADMIN_ID = os.getenv("ADMIN_ID") or ""
 DATABASE_URL = os.getenv("DATABASE_URL")
-THREADS_URL = os.getenv("THREADS") or os.getenv("THREADS_URL") or "https://www.threads.net/@menfessangel"
+THREADS_URL = os.getenv("THREADS") or os.getenv("THREADS_URL") or "https://www.threads.net/@jogjalend"
 THREADS_USER_ID = os.getenv("THREADS_USER_ID")
 THREADS_TOKEN = os.getenv("THREADS_TOKEN")
 WIB = timezone(timedelta(hours=7))
@@ -122,7 +122,6 @@ def send_success(chat_id, user, ch_msg_id):
 def index():
     if request.method=="GET": 
         init_db()
-        # TAMBAHAN COMMAND MENU BIAR MUNCUL PAS KETIK /
         try:
             cmds=[
                 {"command":"start","description":"Buka menu utama"},
@@ -134,7 +133,7 @@ def index():
             ]
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/setMyCommands", json={"commands": cmds}, timeout=3)
         except: pass
-        return f"V94 AUTO THREADS OK + COMMAND MENU - {THREADS_URL}",200
+        return f"V95 FINAL + HELP FIX - {THREADS_URL}",200
 
     init_db()
     data = request.get_json(force=True, silent=True) or {}
@@ -142,7 +141,7 @@ def index():
         msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id); user=get_user(uid); text=msg.get("text",""); caption=msg.get("caption","")
         if "from" in msg: user["name"]=(msg["from"].get("first_name","")+" "+(msg["from"].get("last_name","") or "")).strip() or "-"; user["username"]=msg["from"].get("username","")
         if text.startswith("/start"): send(chat_id, welcome_text(user), main_kb(is_admin(chat_id)))
-        elif text.lower().startswith("/help"): send(chat_id, f"⚙️ COMMAND\n{SEP}\n/start\n/help\n/profile /me\n/post /newpost\n/threads\n/stats\n/limit\n{SEP}\nThreads: {'ON' if user['threads_on'] else 'OFF'}\n{THREADS_URL}", back_kb())
+        elif text.lower().startswith("/help"): send(chat_id, f"/start - Buka menu utama + cek kuota\n/help - daftar command\n/profile /me - cek profile\n/post /newpost - Buat menfess baru. Auto watermark + {HASHTAG}\n/threads - Setting auto post ke Threads ON/OFF. Kalo ON ✅ = tiap menfess auto ke Threads\n/stats - Liat stats pribadi\n/limit - Cek sisa kuota\n\nThreads: {'ON' if user['threads_on'] else 'OFF'}\nhttps://www.threads.net/@jogjalend", back_kb())
         elif text.lower().startswith("/profile") or text.lower().startswith("/me"): send(chat_id, f"My Profile\n{SEP}\nName: {user['name']}\nMedia: {user['today_media']}/5\nText: {user['today_text']}/5\nThreads: {'ON ✅' if user['threads_on'] else 'OFF ❌'}\n{THREADS_URL}", back_kb())
         elif text.lower().startswith("/post") or text.lower().startswith("/newpost"): send(chat_id, f"Post\n{SEP}\nKirim teks/foto/video langsung. Auto watermark + {HASHTAG}", back_kb())
         elif text.lower().startswith("/threads"):
@@ -195,7 +194,7 @@ def index():
         elif cdata in ["verification","post","help","stats","admin_panel"]:
             if cdata=="verification": send(chat_id, f"Verification\n{SEP}\nHubungi @jogja_lend", back_kb())
             elif cdata=="post": send(chat_id, f"Post\n{SEP}\nKirim langsung", back_kb())
-            elif cdata=="help": send(chat_id, f"Help\n{SEP}\nKetik /help", back_kb())
+            elif cdata=="help": send(chat_id, f"/start - Buka menu utama + cek kuota\n/help - daftar command\n/profile /me - cek profile\n/post /newpost - Buat menfess baru. Auto watermark + {HASHTAG}\n/threads - Setting auto post ke Threads ON/OFF. Kalo ON ✅ = tiap menfess auto ke Threads\n/stats - Liat stats pribadi\n/limit - Cek sisa kuota\n\nThreads: {'ON' if user['threads_on'] else 'OFF'}\nhttps://www.threads.net/@jogjalend", back_kb())
             elif cdata=="stats": send(chat_id, f"Stats\n{SEP}\nText {user['today_text']}/5 Media {user['today_media']}/5", back_kb())
             elif cdata=="admin_panel": send(chat_id, f"Admin\n{SEP}\n/reset /ban /unban", admin_back_kb())
     return "ok",200
