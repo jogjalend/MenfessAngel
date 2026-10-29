@@ -1,5 +1,5 @@
 from flask import Flask, request
-import os, requests, io, json, psycopg2
+import os, requests, io, psycopg2
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
@@ -13,7 +13,7 @@ THREADS_URL = os.getenv("THREADS") or os.getenv("THREADS_URL") or "https://www.t
 THREADS_USER_ID = os.getenv("THREADS_USER_ID")
 THREADS_TOKEN = os.getenv("THREADS_TOKEN")
 WIB = timezone(timedelta(hours=7))
-SEP = "────────────────────────"
+SEP = "--------------------------"
 HASHTAG = "#jogjalend"
 
 USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0})
@@ -21,8 +21,7 @@ USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "t
 def get_db():
     if not DATABASE_URL: return None
     try: return psycopg2.connect(DATABASE_URL, connect_timeout=5)
-    except Exception as e:
-        print(f"get_db error: {e}"); return None
+    except: return None
 
 def init_db():
     db = get_db()
@@ -33,14 +32,8 @@ def init_db():
         cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS total_text INT DEFAULT 0")
         cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS total_media INT DEFAULT 0")
         cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS total_chars INT DEFAULT 0")
-        cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS threads_on BOOLEAN DEFAULT FALSE")
-        cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS banned BOOLEAN DEFAULT FALSE")
-        cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS today_text INT DEFAULT 0")
-        cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS today_media INT DEFAULT 0")
-        cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS last_date TEXT")
         db.commit(); cur.close(); db.close()
-        print("DB migrated OK")
-    except Exception as e: print(f"db init error: {e}")
+    except Exception as e: print(f"db init {e}")
 
 def load_user_from_db(uid):
     db = get_db()
@@ -50,7 +43,7 @@ def load_user_from_db(uid):
         cur.execute("SELECT name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars FROM menfess_users WHERE user_id=%s", (uid,))
         row = cur.fetchone(); cur.close(); db.close()
         if row: return {"name":row[0] or "", "username":row[1] or "", "threads_on":row[2] or False, "today_text":row[3] or 0, "today_media":row[4] or 0, "last_date":row[5] or "", "banned":row[6] or False, "total_text":row[7] or 0, "total_media":row[8] or 0, "total_chars":row[9] or 0}
-    except Exception as e: print(f"load error: {e}")
+    except: return None
     return None
 
 def save_user_to_db(uid, user):
@@ -62,7 +55,7 @@ def save_user_to_db(uid, user):
                     (uid, user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars",0),
                      user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars",0)))
         db.commit(); cur.close(); db.close()
-    except Exception as e: print(f"save error: {e}")
+    except Exception as e: print(f"save {e}")
 
 def get_user(uid):
     u = USERS[uid]
@@ -78,19 +71,19 @@ def is_admin(uid): return str(uid) in ADMIN_ID.split(",") if ADMIN_ID else False
 def send(chat_id, text, kb=None):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True}
     if kb: payload["reply_markup"]=kb
-    try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload, timeout=5)
-    except Exception as e: print(f"send error: {e}")
+    try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload, timeout=10)
+    except Exception as e: print(f"send {e}")
 
-def welcome_text(user): return f"Hi {user['name']}!\n{SEP}\nPublish to @menfessangel\nTap Post!\n\nKuota\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5\nThreads : {'ON ✅' if user['threads_on'] else 'OFF ❌'}"
-def back_kb(): return {"inline_keyboard": [[{"text": "« Back", "callback_data": "back_home"}]]}
-def admin_back_kb(): return {"inline_keyboard": [[{"text": "« Back to Admin", "callback_data": "admin_panel"}]]}
-def main_kb(is_admin_user=False):
-    kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Verification", "callback_data": "verification"}, {"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
-    if is_admin_user: kb["inline_keyboard"].append([{"text": "🔐 ADMIN PANEL", "callback_data": "admin_panel"}])
+def welcome_text(user): return f"Hi {user['name']}!\n{SEP}\nPublish to @menfessangel\nTap Post!\n\nKuota\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5"
+
+def back_kb(): return {"inline_keyboard": [[{"text": "<< Back", "callback_data": "back_home"}]]}
+def main_kb(is_ad=False):
+    kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
+    if is_ad: kb["inline_keyboard"].append([{"text": "ADMIN PANEL", "callback_data": "admin_panel"}])
     return kb
 
 def find_logo():
-    for p in ["logo.png", "../logo.png", os.path.join(os.path.dirname(__file__), "../logo.png"), os.path.join(os.path.dirname(__file__), "logo.png")]:
+    for p in ["logo.png", "../logo.png", os.path.join(os.path.dirname(__file__), "../logo.png")]:
         if os.path.exists(p): return p
     return None
 
@@ -107,89 +100,69 @@ def add_watermark(photo_bytes):
         if not lp: return None
         base = Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
         logo = Image.open(lp).convert("RGBA")
-        w,h = base.size; sz = int(w*0.13)
-        logo = logo.resize((sz,sz), Image.LANCZOS)
-        overlay = Image.new("RGBA", base.size, (0,0,0,0))
-        overlay.paste(logo, (12, 12), logo)
+        w,h = base.size; sz = int(w*0.13); logo = logo.resize((sz,sz), Image.LANCZOS)
+        overlay = Image.new("RGBA", base.size, (0,0,0,0)); overlay.paste(logo, (12, 12), logo)
         combined = Image.alpha_composite(base, overlay).convert("RGB")
-        bio = io.BytesIO(); combined.save(bio, "JPEG", quality=92); bio.seek(0)
-        return bio
-    except Exception as e: print(f"wm error: {e}"); return None
+        bio = io.BytesIO(); combined.save(bio, "JPEG", quality=92); bio.seek(0); return bio
+    except: return None
 
-# === STATS V1 DASHBOARD - PIL ===
+# CHART SIMPLE ANTI GAGAL DI VERCEL
 def make_personal_stats_chart(user):
     try:
-        W,H = 1000, 600
+        W,H = 1000, 500
         img = Image.new('RGB', (W,H), '#0D0D0F')
-        draw = ImageDraw.Draw(img, 'RGBA')
-        try:
-            font_title = ImageFont.truetype("/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf", 26)
-            font_sub = ImageFont.truetype("/usr/share/fonts/dejavu/DejaVuSans.ttf", 15)
-            font_big = ImageFont.truetype("/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf", 42)
-            font_mid = ImageFont.truetype("/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf", 20)
-        except:
-            font_title = ImageFont.load_default(); font_sub=font_title; font_big=font_title; font_mid=font_title
+        draw = ImageDraw.Draw(img)
+        f_big = ImageFont.load_default()
+        f_mid = ImageFont.load_default()
 
-        total_chars = user.get('total_chars',0)
-        today_text = user['today_text']; today_media = user['today_media']
-        total_text = user['total_text']; total_media = user['total_media']
+        draw.rectangle([0,0,W,80], fill='#18181B')
+        draw.text((20, 15), f"STATS - {user['name'][:25]}", fill='white', font=f_big)
+        draw.text((20, 45), f"Chars: {user.get('total_chars',0)}", fill='white', font=f_mid)
 
-        draw.rounded_rectangle([30,30, W-30, 115], radius=18, fill='#18181B')
-        draw.text((60, 48), f"Your Menfess Journey - {user['name'][:20]}", fill='white', font=font_title)
-        draw.text((60, 82), f"{today_text} text, {today_media} media today, {total_chars} karakter", fill='#A1A1AA', font=font_sub)
-
-        cards = [
-            {'label':'TODAY TEXT','val':today_text,'sub':f'{today_text}/5 today','color':'#3B82F6','pos':(30,145)},
-            {'label':'TODAY MEDIA','val':today_media,'sub':f'{today_media}/5 today','color':'#10B981','pos':(270,145)},
-            {'label':'TOTAL TEXT','val':total_text,'sub':f'{total_chars} chars','color':'#8B5CF6','pos':(510,145)},
-            {'label':'TOTAL MEDIA','val':total_media,'sub':'all time','color':'#F59E0B','pos':(750,145)},
+        x_gap=20; box_w=230; y1=110; y2=260
+        datas=[
+            (f"TODAY TEXT\n{user['today_text']}/5", '#3B82F6'),
+            (f"TODAY MEDIA\n{user['today_media']}/5", '#10B981'),
+            (f"TOTAL TEXT\n{user['total_text']}", '#8B5CF6'),
+            (f"TOTAL MEDIA\n{user['total_media']}", '#F59E0B'),
         ]
-        max_v = max(5, total_text, total_media, 1)
-        for c in cards:
-            x,y = c['pos']
-            draw.rounded_rectangle([x, y, x+220, y+175], radius=22, fill='#18181B', outline=c['color'], width=1)
-            draw.ellipse([x+18, y+18, x+28, y+28], fill=c['color'])
-            draw.text((x+42, y+16), c['label'], fill='#71717A', font=font_sub)
-            draw.text((x+18, y+48), str(c['val']), fill='white', font=font_big)
-            draw.text((x+18, y+108), c['sub'], fill=c['color'], font=font_mid)
-            bw = int(c['val']/max_v*150) if max_v>0 else 0
-            bw = max(8, bw) if c['val']>0 else 0
-            draw.rounded_rectangle([x+18, y+140, x+18+150, y+148], radius=4, fill='#27272A')
-            if bw>0: draw.rounded_rectangle([x+18, y+140, x+18+bw, y+148], radius=4, fill=c['color'])
+        x=20
+        for txt,color in datas:
+            draw.rectangle([x, y1, x+box_w, y2], fill='#1F1F23', outline=color, width=2)
+            draw.text((x+15, y1+20), txt, fill='white', font=f_mid)
+            x+=box_w+20
 
-        used = today_text + today_media
-        draw.rounded_rectangle([30, 350, W-30, 480], radius=18, fill='#18181B')
-        draw.text((60, 370), "Daily Limit", fill='white', font=font_mid)
-        draw.text((60, 400), f"{used} / 10 kuota kepake hari ini, sisa {10-used}", fill='#A1A1AA', font=font_sub)
-        draw.rounded_rectangle([60, 435, W-60, 453], radius=10, fill='#27272A')
-        prog = int(used/10*(W-120))
-        if prog>0: draw.rounded_rectangle([60, 435, 60+prog, 453], radius=10, fill='#FFFFFF')
+        used = user['today_text'] + user['today_media']
+        draw.rectangle([20, 300, W-20, 380], fill='#18181B')
+        draw.text((30, 310), f"Daily {used}/10 used - sisa {10-used}", fill='white', font=f_mid)
+        draw.rectangle([30, 340, W-30, 355], fill='#27272A')
+        if used>0:
+            prog = int((W-60)*used/10)
+            draw.rectangle([30, 340, 30+prog, 355], fill='white')
 
         bio = io.BytesIO()
-        img.save(bio, format='JPEG', quality=92)
+        img.save(bio, format='JPEG', quality=85)
         bio.seek(0)
+        print(f"Chart OK {bio.getbuffer().nbytes} bytes")
         return bio
     except Exception as e:
-        print(f"chart error: {e}")
+        print(f"chart error {e}")
         import traceback; traceback.print_exc()
         return None
 
 def send_stats(chat_id, user):
     try:
         chart = make_personal_stats_chart(user)
-        caption = f"Stats - {user['name']}\nToday: {user['today_text']} text, {user['today_media']} media\nTotal: {user['total_text']} text, {user['total_media']} media\nChars: {user.get('total_chars',0)}"
+        caption = f"Stats {user['name']}\nToday {user['today_text']} text {user['today_media']} media\nTotal {user['total_text']} text {user['total_media']} media"
         if chart:
             chart.seek(0)
-            files = {"photo": ("stats.jpg", chart, "image/jpeg")}
-            r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": caption}, files=files, timeout=20).json()
-            print(f"sendPhoto result: {r}")
+            r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": caption}, files={"photo": ("stats.jpg", chart, "image/jpeg")}, timeout=20).json()
+            print(f"sendPhoto {r}")
             if r.get("ok"): return
-            else: send(chat_id, caption + f"\n\nDebug: {str(r)[:200]}", back_kb()); return
         send(chat_id, caption, back_kb())
     except Exception as e:
-        print(f"send_stats error: {e}")
-        import traceback; traceback.print_exc()
-        send(chat_id, f"Stats - {user['name']}\nToday: {user['today_text']}/5 text, {user['today_media']}/5 media", back_kb())
+        print(f"send_stats {e}")
+        send(chat_id, "Stats error", back_kb())
 
 def post_to_threads_auto(text_content):
     try:
@@ -201,7 +174,7 @@ def post_to_threads_auto(text_content):
         url_pub = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish"
         r2 = requests.post(url_pub, data={"creation_id": creation_id, "access_token": THREADS_TOKEN}, timeout=10).json()
         return "id" in r2
-    except Exception as e: print(f"threads error: {e}"); return False
+    except: return False
 
 def send_success(chat_id, user, ch_msg_id):
     try:
@@ -211,36 +184,25 @@ def send_success(chat_id, user, ch_msg_id):
         buttons.append([{"text": "See on channel", "url": url}])
         buttons.append([{"text": "Delete", "callback_data": f"del_{ch_msg_id}"}])
         buttons.append([{"text": "Back", "callback_data": "back_home"}])
-        send(chat_id, f"Menfess sent!\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5\nThreads : {'ON' if user['threads_on'] else 'OFF'}\n{'Auto posted to Threads!' if user.get('threads_on') else ''}", {"inline_keyboard": buttons})
-    except Exception as e: print(f"success error: {e}")
+        send(chat_id, f"Menfess sent!\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5", {"inline_keyboard": buttons})
+    except: pass
 
 @app.route("/", methods=["GET","POST"])
 @app.route("/api/index", methods=["GET","POST"])
 def index():
     try:
         init_db()
-        if request.method=="GET":
-            try:
-                cmds=[{"command":"start","description":"Buka menu utama"},{"command":"newpost","description":"create a new post"},{"command":"profile","description":"My profile & kuota"},{"command":"threads","description":"ON/OFF auto post Threads"},{"command":"stats","description":"check your stats"},{"command":"help","description":"answers to basic questions"}]
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/setMyCommands", json={"commands": cmds}, timeout=3)
-            except: pass
-            return f"V100 FIX STATS IMG OK - {THREADS_URL}",200
-
+        if request.method=="GET": return f"V102 CHART FIX OK - {THREADS_URL}",200
         data = request.get_json(force=True, silent=True) or {}
         if "message" in data:
             msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id); user=get_user(uid); text=msg.get("text",""); caption=msg.get("caption","")
             if "from" in msg:
-                user["name"]=(msg["from"].get("first_name","")+" "+(msg["from"].get("last_name","") or "")).strip() or "-"
+                raw = (msg["from"].get("first_name","")+" "+(msg["from"].get("last_name","") or "")).strip() or "-"
+                user["name"] = raw.encode('ascii','ignore').decode('ascii') or "User"
                 user["username"]=msg["from"].get("username","")
             if text.startswith("/start"): send(chat_id, welcome_text(user), main_kb(is_admin(chat_id)))
-            elif text.lower().startswith("/help"): send(chat_id, f"/start - Buka menu utama + cek kuota\n/help - daftar command\n/profile /me - cek profile\n/post /newpost - Buat menfess baru. Auto watermark + {HASHTAG}\n/threads - Setting auto post ke Threads ON/OFF\n/stats - Liat stats pribadi\n/limit - Cek sisa kuota\n\nThreads: {'ON' if user['threads_on'] else 'OFF'}\nhttps://www.threads.net/@jogjalend", back_kb())
-            elif text.lower().startswith("/profile") or text.lower().startswith("/me"): send(chat_id, f"My Profile\n{SEP}\nName: {user['name']}\nMedia: {user['today_media']}/5\nText: {user['today_text']}/5\nThreads: {'ON' if user['threads_on'] else 'OFF'}\n{THREADS_URL}", back_kb())
-            elif text.lower().startswith("/post") or text.lower().startswith("/newpost"): send(chat_id, f"Post\n{SEP}\nKirim teks/foto/video langsung. Auto watermark + {HASHTAG}", back_kb())
-            elif text.lower().startswith("/threads"):
-                kb={"inline_keyboard": [[{"text": "ON", "callback_data": "threads_on"}, {"text": "OFF", "callback_data": "threads_off"}], [{"text": "Back", "callback_data": "back_home"}]]}
-                send(chat_id, f"Threads Setting\n{SEP}\nStatus: {'ON' if user['threads_on'] else 'OFF'}\nLink: {THREADS_URL}\n\nKalo ON = auto post ke Threads juga", kb)
             elif text.lower().startswith("/stats"): send_stats(chat_id, user)
-            elif text.lower().startswith("/limit"): send(chat_id, f"Sisa Kuota\n{SEP}\nText {5-user['today_text']} Media {5-user['today_media']}\nReset 00:00 WIB", back_kb())
+            elif text.lower().startswith("/profile") or text.lower().startswith("/me"): send(chat_id, f"My Profile\n{SEP}\nName: {user['name']}\nMedia: {user['today_media']}/5\nText: {user['today_text']}/5", back_kb())
             elif not user["banned"]:
                 if text and not text.startswith("/") and len(text)>=3:
                     if user["today_text"]>=5: send(chat_id, f"Limit 5/5\n{SEP}\nReset 00:00 WIB", back_kb())
@@ -253,7 +215,7 @@ def index():
                             if user.get("threads_on"): post_to_threads_auto(clean)
                             user["today_text"]+=1; user["total_text"]+=1; user["total_chars"]=user.get("total_chars",0)+len(text)
                             save_user_to_db(uid, user); send_success(chat_id, user, ch_id)
-                        except Exception as e: print(f"text send error: {e}")
+                        except Exception as e: print(e)
                 if "photo" in msg or "video" in msg:
                     if user["today_media"]>=5: send(chat_id, f"Limit 5/5", back_kb())
                     else:
@@ -270,36 +232,22 @@ def index():
                             else: r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=8).json(); ch_id=r.get("result",{}).get("message_id")
                             if user.get("threads_on"): post_to_threads_auto(base_cap)
                             user["today_media"]+=1; user["total_media"]+=1
-                            if caption: user["total_chars"]=user.get("total_chars",0)+len(caption)
                             save_user_to_db(uid, user); send_success(chat_id, user, ch_id)
-                        except Exception as e: print(f"media error: {e}")
-
+                        except Exception as e: print(e)
         if "callback_query" in data:
             cq=data["callback_query"]; chat_id=cq["message"]["chat"]["id"]; uid=str(chat_id); user=get_user(uid); cdata=cq["data"]
             try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id": cq["id"]}, timeout=2)
             except: pass
-            if cdata=="my_profile": send(chat_id, f"My Profile\n{SEP}\nThreads: {'ON' if user['threads_on'] else 'OFF'}\n{THREADS_URL}", back_kb())
+            if cdata=="stats": send_stats(chat_id, user)
             elif cdata=="back_home": send(chat_id, welcome_text(user), main_kb(is_admin(chat_id)))
-            elif cdata=="threads":
-                kb={"inline_keyboard": [[{"text": "ON", "callback_data": "threads_on"}, {"text": "OFF", "callback_data": "threads_off"}], [{"text": "Back", "callback_data": "back_home"}]]}
-                send(chat_id, f"Threads Setting\n{SEP}\nStatus: {'ON' if user['threads_on'] else 'OFF'}\nLink: {THREADS_URL}\nKalo ON auto post ke Threads", kb)
-            elif cdata=="threads_on": user["threads_on"]=True; save_user_to_db(uid, user); send(chat_id, f"Threads: ON\n{SEP}\nAuto post ENABLED\n{THREADS_URL}", back_kb())
-            elif cdata=="threads_off": user["threads_on"]=False; save_user_to_db(uid, user); send(chat_id, f"Threads: OFF\n{SEP}\nAuto post DISABLED", back_kb())
             elif cdata.startswith("del_"):
                 mid=cdata.replace("del_","")
                 if mid.isdigit():
                     try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage", json={"chat_id": CHANNEL_ID, "message_id": int(mid)}, timeout=3)
                     except: pass
                 send(chat_id, "Deleted", back_kb())
-            elif cdata=="stats": send_stats(chat_id, user)
-            elif cdata in ["verification","post","help","admin_panel"]:
-                if cdata=="verification": send(chat_id, f"Verification\n{SEP}\nHubungi @jogja_lend", back_kb())
-                elif cdata=="post": send(chat_id, f"Post\n{SEP}\nKirim langsung", back_kb())
-                elif cdata=="help": send(chat_id, f"/start - Buka menu utama + cek kuota\n/help - daftar command\n/profile /me - cek profile\n/post /newpost - Buat menfess baru. Auto watermark + {HASHTAG}\n/threads - Setting auto post ke Threads ON/OFF\n/stats - Liat stats pribadi\n/limit - Cek sisa kuota\n\nThreads: {'ON' if user['threads_on'] else 'OFF'}\nhttps://www.threads.net/@jogjalend", back_kb())
-                elif cdata=="admin_panel": send(chat_id, f"Admin\n{SEP}\n/reset /ban /unban", admin_back_kb())
-
+            elif cdata in ["my_profile","post","threads","help"]:
+                send(chat_id, welcome_text(user), main_kb(is_admin(chat_id)))
         return "ok",200
     except Exception as e:
-        print(f"GLOBAL ERROR: {e}")
-        import traceback; traceback.print_exc()
-        return "ok", 200
+        print(f"GLOBAL {e}"); import traceback; traceback.print_exc(); return "ok",200
