@@ -68,7 +68,7 @@ def back_kb(): return {"inline_keyboard": [[{"text": "« Back", "callback_data":
 def admin_back_kb(): return {"inline_keyboard": [[{"text": "« Back to Admin", "callback_data": "admin_panel"}]]}
 def main_kb(is_admin_user=False):
     kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Verification", "callback_data": "verification"}, {"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
-    if is_admin_user: kb["inline_keyboard"].append([{"text": "🔐 ADMIN PANEL", "callback_data": "admin_panel"}])
+    if is_admin_user: kb["inline_keyboard"].append([{"text": "🛠 ADMIN PANEL", "callback_data": "admin_panel"}])
     return kb
 
 def find_logo():
@@ -185,8 +185,8 @@ def post_to_threads_auto(text_content):
 def send_success(chat_id, user, ch_msg_id):
     url=f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_msg_id}" if ch_msg_id else f"https://t.me/{CHANNEL_ID.replace('@','')}"
     buttons=[]
-    if user.get("threads_on"): buttons.append([{"text": "See on Threads 🧵", "url": THREADS_URL}])
-    buttons.append([{"text": "See on channel", "url": url}])
+    if user.get("threads_on"): buttons.append([{"text": "📧See on Threads", "url": THREADS_URL}])
+    buttons.append([{"text": "✉️See on channel", "url": url}])
     buttons.append([{"text": "Delete", "callback_data": f"del_{ch_msg_id}"}])
     buttons.append([{"text": "« Back", "callback_data": "back_home"}])
     send(chat_id, f"Menfess sent!\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5\nThreads : {'ON ✅' if user['threads_on'] else 'OFF ❌'}\n{'Auto posted to Threads!' if user.get('threads_on') else ''}", {"inline_keyboard": buttons})
