@@ -16,7 +16,6 @@ WIB = timezone(timedelta(hours=7))
 SEP = "●-----------------------------------------------------●"
 HASHTAG = "#jogjalend"
 
-# === V106.6 FIX - ALL CLICKABLE ===
 def to_fancy(text):
     pattern = r'@\w+|#\w+|/\w+|https?://\S+|threads\.net/\S+|t\.me/\S+'
     res_parts = []
@@ -100,6 +99,22 @@ def send_message(chat_id,text,kb=None):
     if kb: payload["reply_markup"]=kb
     try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json=payload,timeout=10)
     except: pass
+
+# === V106.8 FIX: EDIT BUKAN SEND BARU ===
+def edit_message(chat_id, msg_id, text, kb=None):
+    if kb and "inline_keyboard" in kb:
+        for row in kb["inline_keyboard"]:
+            for btn in row:
+                if "text" in btn and "url" not in btn:
+                    btn["text"]=F(btn["text"])
+    payload={"chat_id":chat_id,"message_id":msg_id,"text":F(text),"parse_mode":"HTML","disable_web_page_preview":True}
+    if kb: payload["reply_markup"]=kb
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json=payload,timeout=10)
+        if r.status_code != 200:
+            send_message(chat_id,text,kb)
+    except:
+        send_message(chat_id,text,kb)
 
 def get_welcome_text(user): return f"Hi {user['name']}!\n{SEP}\nPublish to @menfessangel\nTap Post!\n\nKuota\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5"
 def get_back_keyboard(): return {"inline_keyboard": [[{"text": "<< Back", "callback_data": "back_home"}]]}
@@ -246,7 +261,7 @@ def send_success(chat_id,user,ch_msg_id,target="both"):
 def main_handler():
     try:
         init_db()
-        if request.method=="GET": return "V106.6 OK",200
+        if request.method=="GET": return "V106.8 OK",200
         data=request.get_json(force=True,silent=True) or {}
         if "message" in data:
             msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id); user=get_user(uid); text=msg.get("text",""); caption=msg.get("caption","")
@@ -255,6 +270,11 @@ def main_handler():
                 user["name"]=raw.encode('ascii','ignore').decode('ascii') or "User"
                 user["username"]=msg["from"].get("username","")
             if text.startswith("/start"): send_message(chat_id,get_welcome_text(user),get_main_keyboard(is_admin(chat_id)))
+            elif text.startswith("/newpost"): send_message(chat_id,f"Post Menfess\n{SEP}\nKetik langsung text / kirim media + caption\nAuto tag {HASHTAG}",get_back_keyboard())
+            elif text.startswith("/profile"): send_message(chat_id,f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5",get_back_keyboard())
+            elif text.startswith("/threads"):
+                kb={"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "<< Back", "callback_data": "back_home"}]]}
+                send_message(chat_id,f"Threads Setting\n{SEP}\nStatus: {'ON' if user.get('threads_on') else 'OFF'}\nLink: threads.net/jogjalend",kb)
             elif text.lower().startswith("/stats"): send_stats(chat_id,user,"today")
             elif not user["banned"]:
                 if text and not text.startswith("/") and len(text)>=3:
@@ -293,62 +313,58 @@ def main_handler():
                             save_user_to_db(uid,user); send_success(chat_id,user,ch_id,target)
                         except Exception as e: print(e)
         if "callback_query" in data:
-            cq=data["callback_query"]; chat_id=cq["message"]["chat"]["id"]; uid=str(chat_id); user=get_user(uid); cdata=cq["data"]
+            cq=data["callback_query"]; chat_id=cq["message"]["chat"]["id"]; uid=str(chat_id); user=get_user(uid); cdata=cq["data"]; msg_id=cq["message"]["message_id"]
             try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",json={"callback_query_id":cq["id"]},timeout=2)
             except: pass
-            if cdata=="back_home": send_message(chat_id,get_welcome_text(user),get_main_keyboard(is_admin(chat_id)))
-            elif cdata=="my_profile": send_message(chat_id,f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5",get_back_keyboard())
-            elif cdata=="post": send_message(chat_id,f"Post Menfess\n{SEP}\nKetik langsung text / kirim media + caption\nAuto tag {HASHTAG}",get_back_keyboard())
+            # SEMUA CALLBACK PAKAI EDIT - ANTI SPAM
+            if cdata=="back_home": edit_message(chat_id,msg_id,get_welcome_text(user),get_main_keyboard(is_admin(chat_id)))
+            elif cdata=="my_profile": edit_message(chat_id,msg_id,f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5",get_back_keyboard())
+            elif cdata=="post": edit_message(chat_id,msg_id,f"Post Menfess\n{SEP}\nKetik langsung text / kirim media + caption\nAuto tag {HASHTAG}",get_back_keyboard())
             elif cdata=="threads":
                 kb={"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "<< Back", "callback_data": "back_home"}]]}
-                send_message(chat_id,f"Threads Setting\n{SEP}\nStatus: {'ON' if user.get('threads_on') else 'OFF'}\nLink: threads.net/jogjalend",kb)
+                edit_message(chat_id,msg_id,f"Threads Setting\n{SEP}\nStatus: {'ON' if user.get('threads_on') else 'OFF'}\nLink: threads.net/jogjalend",kb)
             elif cdata=="threads_toggle":
                 user["threads_on"]=not user.get("threads_on",False); save_user_to_db(uid,user)
                 kb={"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "<< Back", "callback_data": "back_home"}]]}
-                send_message(chat_id,f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend",kb)
+                edit_message(chat_id,msg_id,f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend",kb)
             elif cdata=="help":
-                send_message(chat_id, f"""Pusat Bantuan - @menfessangel Bot
-
+                edit_message(chat_id, msg_id, f"""Pusat Bantuan - @menfessangel Bot
 PANDUAN PENGIRIMAN:
 - Ketik pesan teks Anda di sini
 - Kirim foto/video beserta caption
 - Otomatis ditambahkan tagar #jogjalend
 - Otomatis terbit di channel @menfessangel
-
 BATAS HARIAN:
 - Batas 5 teks dan 5 media per hari
 - Reset setiap pukul 00:00 WIB
 - Gunakan /stats untuk melihat statistik
-
 INTEGRASI THREADS:
 - Pengaturan di menu Threads Setting
 - ON = terbit di threads.net/jogjalend juga
 - OFF = hanya terbit di channel
-
 DAFTAR PERINTAH:
 /start - Menu utama
 /stats - Statistik TODAY 1D & WEEKLY 7D
-
-Bot Versi V106.6
+Bot Versi V106.8
 Author : @jogja_lend""", get_back_keyboard())
             elif cdata=="stats": send_stats(chat_id,user,"today")
             elif cdata=="stats_today": send_stats(chat_id,user,"today")
             elif cdata=="stats_weekly": send_stats(chat_id,user,"weekly")
             elif cdata=="admin_panel":
-                if is_admin(chat_id): send_message(chat_id,f"ADMIN PANEL\n{SEP}\nHalo admin {user['name']}\nCurrent: {user.get('admin_target','both').upper()}",get_admin_keyboard(user))
-                else: send_message(chat_id,"Not admin",get_back_keyboard())
+                if is_admin(chat_id): edit_message(chat_id,msg_id,f"ADMIN PANEL\n{SEP}\nHalo admin {user['name']}\nCurrent: {user.get('admin_target','both').upper()}",get_admin_keyboard(user))
+                else: edit_message(chat_id,msg_id,"Not admin",get_back_keyboard())
             elif cdata=="admin_set_channel":
-                if is_admin(chat_id): user["admin_target"]="channel"; save_user_to_db(uid,user); send_message(chat_id,f"Set ke CHANNEL ONLY",get_admin_keyboard(user))
+                if is_admin(chat_id): user["admin_target"]="channel"; save_user_to_db(uid,user); edit_message(chat_id,msg_id,f"Set ke CHANNEL ONLY",get_admin_keyboard(user))
             elif cdata=="admin_set_threads":
-                if is_admin(chat_id): user["admin_target"]="threads"; save_user_to_db(uid,user); send_message(chat_id,f"Set ke THREADS ONLY",get_admin_keyboard(user))
+                if is_admin(chat_id): user["admin_target"]="threads"; save_user_to_db(uid,user); edit_message(chat_id,msg_id,f"Set ke THREADS ONLY",get_admin_keyboard(user))
             elif cdata=="admin_set_both":
-                if is_admin(chat_id): user["admin_target"]="both"; save_user_to_db(uid,user); send_message(chat_id,f"Set ke BOTH",get_admin_keyboard(user))
+                if is_admin(chat_id): user["admin_target"]="both"; save_user_to_db(uid,user); edit_message(chat_id,msg_id,f"Set ke BOTH",get_admin_keyboard(user))
             elif cdata.startswith("del_"):
                 mid=cdata.replace("del_","")
                 if mid.isdigit():
                     try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",json={"chat_id":CHANNEL_ID,"message_id":int(mid)},timeout=3)
                     except: pass
-                send_message(chat_id,"Deleted",get_back_keyboard())
+                edit_message(chat_id,msg_id,"Deleted",get_back_keyboard())
         return "ok",200
     except Exception as e:
         print(f"ERROR {e}"); import traceback; traceback.print_exc(); return "ok",200
