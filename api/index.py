@@ -13,30 +13,34 @@ THREADS_URL = os.getenv("THREADS") or "https://threads.net/jogjalend"
 THREADS_USER_ID = os.getenv("THREADS_USER_ID")
 THREADS_TOKEN = os.getenv("THREADS_TOKEN")
 WIB = timezone(timedelta(hours=7))
-SEP = "●-----------------------------------------------------●"
+SEP = "●------------------------------------------------------●"
 HASHTAG = "#jogjalend"
 
-# === FONT SANS BIASA + KEEP MENTIONS/LINK CLICKABLE ===
+# === FIX FONT SANS BIASA - MENTIONS & LINK TETAP KLIKABLE ===
 def to_fancy(text):
-    protected = []
-    def save_match(m):
-        protected.append(m.group(0))
-        return f"__P{len(protected)-1}__"
-    # Lindungi yang harus tetap klikable
-    text = re.sub(r'@\w+', save_match, text)
-    text = re.sub(r'#\w+', save_match, text)
-    text = re.sub(r'https?://\S+|threads\.net/\S+|t\.me/\S+', save_match, text)
-    
-    res=""
-    for c in text:
-        if 'A' <= c <= 'Z': res+=chr(0x1D5A0 + ord(c)-65)
-        elif 'a' <= c <= 'z': res+=chr(0x1D5BA + ord(c)-97)
-        elif '0' <= c <= '9': res+=chr(0x1D7E2 + ord(c)-48)
-        else: res+=c
-    
-    for i, orig in enumerate(protected):
-        res = res.replace(f"__P{i}__", orig)
-    return res
+    pattern = r'@\w+|#\w+|https?://\S+|threads\.net/\S+|t\.me/\S+'
+    res_parts = []
+    last_idx = 0
+    for m in re.finditer(pattern, text):
+        before = text[last_idx:m.start()]
+        conv = ""
+        for c in before:
+            if 'A' <= c <= 'Z': conv+=chr(0x1D5A0 + ord(c)-65)
+            elif 'a' <= c <= 'z': conv+=chr(0x1D5BA + ord(c)-97)
+            elif '0' <= c <= '9': conv+=chr(0x1D7E2 + ord(c)-48)
+            else: conv+=c
+        res_parts.append(conv)
+        res_parts.append(m.group(0))  # jangan di convert
+        last_idx = m.end()
+    tail = text[last_idx:]
+    conv = ""
+    for c in tail:
+        if 'A' <= c <= 'Z': conv+=chr(0x1D5A0 + ord(c)-65)
+        elif 'a' <= c <= 'z': conv+=chr(0x1D5BA + ord(c)-97)
+        elif '0' <= c <= '9': conv+=chr(0x1D7E2 + ord(c)-48)
+        else: conv+=c
+    res_parts.append(conv)
+    return "".join(res_parts)
 
 def F(t): return to_fancy(t)
 
@@ -242,7 +246,7 @@ def send_success(chat_id,user,ch_msg_id,target="both"):
 def main_handler():
     try:
         init_db()
-        if request.method=="GET": return "V106.4 SANS CLICKABLE OK",200
+        if request.method=="GET": return "V106.5 FIX OK",200
         data=request.get_json(force=True,silent=True) or {}
         if "message" in data:
             msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id); user=get_user(uid); text=msg.get("text",""); caption=msg.get("caption","")
@@ -325,7 +329,7 @@ DAFTAR PERINTAH:
 /start - Menu utama
 /stats - Statistik TODAY 1D & WEEKLY 7D
 
-Bot Versi V106.4
+Bot Versi V106.5
 Author : @jogja_lend""", get_back_keyboard())
             elif cdata=="stats": send_stats(chat_id,user,"today")
             elif cdata=="stats_today": send_stats(chat_id,user,"today")
