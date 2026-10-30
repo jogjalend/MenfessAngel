@@ -15,7 +15,7 @@ THREADS_TOKEN = os.getenv("THREADS_TOKEN")
 MAIN_THREAD_ID = os.getenv("MAIN_THREAD_ID")
 LOG_CHANNEL = os.getenv("LOG_CHANNEL") or CHANNEL_ID
 WIB = timezone(timedelta(hours=7))
-SEP = "●--------------------------------------------------------●"
+SEP = "●-----------------------------------------------------●"
 HASHTAG = "#jogjalend"
 
 def to_fancy(text):
@@ -104,11 +104,29 @@ def send_message(chat_id,text,kb=None):
         return True
     except: return False
 
+def edit_message_fast(chat_id, msg_id, text, kb=None):
+    try:
+        kb_fancy=None
+        if kb and "inline_keyboard" in kb:
+            kb_fancy=copy.deepcopy(kb)
+            for row in kb_fancy["inline_keyboard"]:
+                for btn in row:
+                    if "text" in btn and "url" not in btn: btn["text"]=F(btn["text"])
+        payload={"chat_id":chat_id,"message_id":msg_id,"text":F(text),"parse_mode":"HTML","disable_web_page_preview":True}
+        if kb_fancy: payload["reply_markup"]=kb_fancy
+        r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json=payload,timeout=10)
+        if r.status_code==200: return True
+    except: pass
+    try:
+        payload2={"chat_id":chat_id,"message_id":msg_id,"text":text,"disable_web_page_preview":True}
+        if kb: payload2["reply_markup"]=kb
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json=payload2,timeout=10)
+        return True
+    except: return False
+
 def report_error(chat_id, where, error):
     err_str=str(error)
-    if "ReadTimeout" in err_str or "Timeout" in err_str or "timed out" in err_str:
-        print(f"[IGNORED TIMEOUT in {where}]")
-        return
+    if "ReadTimeout" in err_str or "Timeout" in err_str or "timed out" in err_str: return
     print(f"[ERROR in {where}] {error}\n{traceback.format_exc()}")
 
 def get_welcome_text(user): return f"Hi !\n{SEP}\nPublish to @menfessangel\nTap Post!\n\nKuota\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5"
@@ -117,11 +135,31 @@ def get_main_keyboard(is_ad=False):
     kb={"inline_keyboard": [[{"text": "👤 My Profile", "callback_data": "my_profile"}, {"text": "💌 Post", "callback_data": "post"}], [{"text": "📧 Threads Setting", "callback_data": "threads"}], [{"text": "📈 Stats", "callback_data": "stats"}, {"text": "ℹ️ Info Bot", "callback_data": "info_bot"}]]}
     if is_ad: kb["inline_keyboard"].append([{"text": "ADMIN PANEL", "callback_data": "admin_panel"}])
     return kb
-def get_menu_1(): return {"inline_keyboard": [[{"text": "🔔 Tag", "callback_data": "lend_tag"}],[{"text": "📥 Mode Persetujuan", "callback_data": "lend_persetujuan"}],[{"text": "🗑️ Menghapus Pesan", "callback_data": "lend_hapus"}],[{"text": "🇮🇩 Lang", "callback_data": "lend_lang"}, {"text": "✅ Tutup", "callback_data": "close"}, {"text": "▶️ Lainnya", "callback_data": "lend_page2"}]]}
-def get_menu_2(): return {"inline_keyboard": [[{"text": "📜 Peraturan", "callback_data": "lend_peraturan"}],[{"text": "⚠️ Peringatan", "callback_data": "lend_peringatan"}],[{"text": "🚫 Daftar Hitam", "callback_data": "lend_blacklist"}],[{"text": "🔐 Perizinan", "callback_data": "lend_izin"}],[{"text": "📋 Log Saluran", "callback_data": "lend_log"}],[{"text": "🎯 Manajemen Channel", "callback_data": "lend_channel"}],[{"text": "⬅️ Kembali", "callback_data": "lend_page1"}, {"text": "❌ Tutup", "callback_data": "close"}]]}
+def get_menu_1():
+    return {"inline_keyboard": [
+        [{"text": "🔔 Tag", "callback_data": "lend_tag"}],
+        [{"text": "📥 Mode Persetujuan", "callback_data": "lend_persetujuan"}],
+        [{"text": "🗑️ Menghapus Pesan", "callback_data": "lend_hapus"}],
+        [{"text": "🇮🇩 Lang", "callback_data": "lend_lang"}, {"text": "✅ Tutup", "callback_data": "close"}],
+        [{"text": "▶️ Lainnya", "callback_data": "lend_page2"}]
+    ]}
+def get_menu_2():
+    return {"inline_keyboard": [
+        [{"text": "📜 Peraturan", "callback_data": "lend_peraturan"}],
+        [{"text": "⚠️ Peringatan", "callback_data": "lend_peringatan"}],
+        [{"text": "🚫 Daftar Hitam", "callback_data": "lend_blacklist"}],
+        [{"text": "🔐 Perizinan", "callback_data": "lend_izin"}, {"text": "📋 Log Saluran", "callback_data": "lend_log"}],
+        [{"text": "🎯 Manajemen Channel", "callback_data": "lend_channel"}],
+        [{"text": "⬅️ Kembali", "callback_data": "lend_page1"}, {"text": "❌ Tutup", "callback_data": "close"}]
+    ]}
 def get_channel_target_keyboard(user):
     target=user.get("admin_target","both")
-    return {"inline_keyboard": [[{"text": f"📍 Target: {target.upper()}", "callback_data": "admin_noop"}],[{"text": f"{'✅ ' if target=='channel' else ''}📢 Channel Only", "callback_data": "admin_set_channel"}],[{"text": f"{'✅ ' if target=='threads' else ''}🧵 Threads Only", "callback_data": "admin_set_threads"}],[{"text": f"{'✅ ' if target=='both' else ''}🚀 Both (Channel+Threads)", "callback_data": "admin_set_both"}],[{"text": f"🆔 MAIN ID: {(MAIN_THREAD_ID[:12]+'...') if MAIN_THREAD_ID and len(MAIN_THREAD_ID)>12 else (MAIN_THREAD_ID or 'BELUM SET')}", "callback_data": "admin_noop"}],[{"text": "⬅️ Kembali", "callback_data": "lend_page2"}]]}
+    return {"inline_keyboard": [
+        [{"text": f"📍 Target: {target.upper()}", "callback_data": "admin_noop"}],
+        [{"text": f"{'✅ ' if target=='channel' else ''}📢 Channel Only", "callback_data": "admin_set_channel"}, {"text": f"{'✅ ' if target=='threads' else ''}🧵 Threads Only", "callback_data": "admin_set_threads"}],
+        [{"text": f"{'✅ ' if target=='both' else ''}🚀 Both (Channel+Threads)", "callback_data": "admin_set_both"}],
+        [{"text": "⬅️ Kembali", "callback_data": "lend_page2"}]
+    ]}
 
 def find_logo():
     for p in ["logo.png","../logo.png",os.path.join(os.path.dirname(__file__),"../logo.png"),os.path.join(os.path.dirname(__file__),"logo.png")]:
@@ -159,15 +197,14 @@ def make_today_chart(user):
         hours=["08:00","12:00","16:00","20:00"]; total=user['today_text']+user['today_media']
         highs=[0]*4 if total==0 else [random.randint(0,2)+(total//4) for _ in hours]
         max_val=max(highs) if max(highs)>0 else 3
-        ct,cb,cl,cr=80,370,50,700
-        slot_w=(cr-cl)//len(hours)
+        slot_w=(700-50)//len(hours)
         for idx in range(len(hours)):
-            xc=cl+idx*slot_w+slot_w//2; v=highs[idx]
-            yh=cb-int(v/max_val*250) if max_val>0 else cb
+            xc=50+idx*slot_w+slot_w//2; v=highs[idx]
+            yh=370-int(v/max_val*250) if max_val>0 else 370
             color='#10B981' if idx%2==0 else '#EF4444'
             if total==0: color='#27272A'
-            draw.rectangle([xc-15,yh,xc+15,cb],fill=color)
-            draw.text((xc-15,cb+8),hours[idx],fill='#A1A1AA',font=f_small)
+            draw.rectangle([xc-15,yh,xc+15,370],fill=color)
+            draw.text((xc-15,378),hours[idx],fill='#A1A1AA',font=f_small)
         bio=io.BytesIO(); img.save(bio,format='JPEG',quality=70); bio.seek(0); return bio
     except: return None
 def make_weekly_chart(user):
@@ -177,11 +214,11 @@ def make_weekly_chart(user):
         draw.rectangle([0,0,W,60],fill='#161618')
         draw.text((20,12),"WEEKLY 7D",fill='white',font=f_title)
         days=["22","23","24","25","26","27","28"]; vals=[random.randint(1,4) for _ in days]; max_v=max(vals)
-        ct,cb,cl,cr=80,370,50,700; slot_w=(cr-cl)//len(days)
+        slot_w=(700-50)//len(days)
         for idx in range(len(days)):
-            xc=cl+idx*slot_w+slot_w//2; v=vals[idx]
-            yv=cb-int(v/max_v*250); draw.rectangle([xc-14,yv,xc+14,cb],fill='#3B82F6')
-            draw.text((xc-8,cb+8),days[idx],fill='#A1A1AA',font=f_small)
+            xc=50+idx*slot_w+slot_w//2; v=vals[idx]
+            yv=370-int(v/max_v*250); draw.rectangle([xc-14,yv,xc+14,370],fill='#3B82F6')
+            draw.text((xc-8,378),days[idx],fill='#A1A1AA',font=f_small)
         bio=io.BytesIO(); img.save(bio,format='JPEG',quality=70); bio.seek(0); return bio
     except: return None
 def send_stats(chat_id,user,mode="today"):
@@ -228,7 +265,7 @@ def main_handler():
     data={}; where="init"
     try:
         where="init_db"; init_db()
-        if request.method=="GET": return "JogjaLend Bot V109.4 SLEEP-1.5 DELETE OK",200
+        if request.method=="GET": return "JogjaLend Bot V110.2 EDIT 0.3s OK",200
         where="parse_json"; data=request.get_json(force=True,silent=True) or {}
         if "message" in data:
             msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id)
@@ -284,54 +321,50 @@ def main_handler():
             where=f"callback {cdata}"
             try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",json={"callback_query_id":cq["id"]},timeout=2)
             except: pass
-            
-            # SLEEP 1.5 DETIK - GAK PAKE MENGETIK
-            time.sleep(1.5)
-            
-            # DELETE TAB LAMA - GANTI LAMAN BARU
-            try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",json={"chat_id":chat_id,"message_id":msg_id},timeout=2)
-            except: pass
+            time.sleep(0.3)
             user=get_user(uid)
 
             if cdata in ["stats","stats_today","stats_weekly"]:
+                try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",json={"chat_id":chat_id,"message_id":msg_id},timeout=2)
+                except: pass
                 mode = "weekly" if cdata=="stats_weekly" else "today"
                 send_stats(chat_id,user,mode)
-            elif cdata=="back_home": send_message(chat_id,get_welcome_text(user),get_main_keyboard(is_admin(chat_id)))
-            elif cdata=="lend_page1": send_message(chat_id,"⚙️ Pilih salah satu pengaturan yang ingin anda ubah.",get_menu_1())
-            elif cdata=="lend_page2": send_message(chat_id,"⚙️ Pilih salah satu pengaturan yang ingin anda ubah.",get_menu_2())
-            elif cdata=="my_profile": send_message(chat_id,f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5",get_back_keyboard())
-            elif cdata=="post": send_message(chat_id,f"Post Menfess\n{SEP}\nKetik langsung text / kirim media + caption\nAuto tag {HASHTAG}",get_back_keyboard())
+            elif cdata=="back_home": edit_message_fast(chat_id,msg_id,get_welcome_text(user),get_main_keyboard(is_admin(chat_id)))
+            elif cdata=="lend_page1": edit_message_fast(chat_id,msg_id,"⚙️ Pilih salah satu pengaturan yang ingin anda ubah.",get_menu_1())
+            elif cdata=="lend_page2": edit_message_fast(chat_id,msg_id,"⚙️ Pilih salah satu pengaturan yang ingin anda ubah.",get_menu_2())
+            elif cdata=="my_profile": edit_message_fast(chat_id,msg_id,f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5",get_back_keyboard())
+            elif cdata=="post": edit_message_fast(chat_id,msg_id,f"Post Menfess\n{SEP}\nKetik langsung text / kirim media + caption\nAuto tag {HASHTAG}",get_back_keyboard())
             elif cdata=="threads":
                 kb={"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
-                send_message(chat_id,f"Threads Setting\n{SEP}\nStatus: {'ON' if user.get('threads_on') else 'OFF'}\nLink: threads.net/jogjalend",kb)
+                edit_message_fast(chat_id,msg_id,f"Threads Setting\n{SEP}\nStatus: {'ON' if user.get('threads_on') else 'OFF'}\nLink: threads.net/jogjalend",kb)
             elif cdata=="threads_toggle":
                 user["threads_on"]=not user.get("threads_on",False); save_user_to_db(uid,user)
                 kb={"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
-                send_message(chat_id,f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend",kb)
+                edit_message_fast(chat_id,msg_id,f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend",kb)
             elif cdata=="info_bot":
                 info_text = f"🔧 Bantuan\n\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis ke @joglendsupportBot.\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend."
-                send_message(chat_id, info_text, get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, info_text, get_back_keyboard())
             elif cdata=="admin_panel": 
-                if is_admin(chat_id): send_message(chat_id,"⚙️ Pilih salah satu pengaturan yang ingin anda ubah.",get_menu_1())
-                else: send_message(chat_id,"Not admin",get_back_keyboard())
-            elif cdata=="lend_tag": send_message(chat_id,f"🔔 Tag\n{SEP}\nAtur hashtag otomatis, saat ini: {HASHTAG}",get_menu_1())
-            elif cdata=="lend_peraturan": send_message(chat_id,f"📜 Peraturan\n{SEP}\n/setperaturan <teks> untuk set peraturan",get_menu_2())
-            elif cdata=="lend_peringatan": send_message(chat_id,f"⚠️ Peringatan\n{SEP}\n/warn untuk kasih peringatan, 3x auto ban",get_menu_2())
-            elif cdata=="lend_blacklist": send_message(chat_id,f"🚫 Daftar Hitam\n{SEP}\n/ban untuk blokir user\n/unban untuk lepas",get_menu_2())
-            elif cdata=="lend_persetujuan": send_message(chat_id,f"📥 Mode Persetujuan\n{SEP}\nJika ON, semua menfess masuk ke log dulu",get_menu_1())
-            elif cdata=="lend_hapus": send_message(chat_id,f"🗑️ Menghapus Pesan\n{SEP}\n/del reply pesan untuk hapus",get_menu_1())
-            elif cdata=="lend_izin": send_message(chat_id,f"🔐 Perizinan\n{SEP}\nAtur siapa boleh post media/link",get_menu_2())
-            elif cdata=="lend_log": send_message(chat_id,f"📋 Log Saluran\n{SEP}\nLog ke: {LOG_CHANNEL}",get_menu_2())
-            elif cdata=="lend_lang": send_message(chat_id,f"🇮🇩 Lang\n{SEP}\nBahasa Bot: Indonesia",get_menu_1())
+                if is_admin(chat_id): edit_message_fast(chat_id,msg_id,"⚙️ Pilih salah satu pengaturan yang ingin anda ubah.",get_menu_1())
+                else: edit_message_fast(chat_id,msg_id,"Not admin",get_back_keyboard())
+            elif cdata=="lend_tag": edit_message_fast(chat_id,msg_id,f"🔔 Tag\n{SEP}\nAtur hashtag otomatis, saat ini: {HASHTAG}",get_menu_1())
+            elif cdata=="lend_peraturan": edit_message_fast(chat_id,msg_id,f"📜 Peraturan\n{SEP}\n/setperaturan <teks> untuk set peraturan",get_menu_2())
+            elif cdata=="lend_peringatan": edit_message_fast(chat_id,msg_id,f"⚠️ Peringatan\n{SEP}\n/warn untuk kasih peringatan, 3x auto ban",get_menu_2())
+            elif cdata=="lend_blacklist": edit_message_fast(chat_id,msg_id,f"🚫 Daftar Hitam\n{SEP}\n/ban untuk blokir user\n/unban untuk lepas",get_menu_2())
+            elif cdata=="lend_persetujuan": edit_message_fast(chat_id,msg_id,f"📥 Mode Persetujuan\n{SEP}\nJika ON, semua menfess masuk ke log dulu",get_menu_1())
+            elif cdata=="lend_hapus": edit_message_fast(chat_id,msg_id,f"🗑️ Menghapus Pesan\n{SEP}\n/del reply pesan untuk hapus",get_menu_1())
+            elif cdata=="lend_izin": edit_message_fast(chat_id,msg_id,f"🔐 Perizinan\n{SEP}\nAtur siapa boleh post media/link",get_menu_2())
+            elif cdata=="lend_log": edit_message_fast(chat_id,msg_id,f"📋 Log Saluran\n{SEP}\nLog ke: {LOG_CHANNEL}",get_menu_2())
+            elif cdata=="lend_lang": edit_message_fast(chat_id,msg_id,f"🇮🇩 Lang\n{SEP}\nBahasa Bot: Indonesia",get_menu_1())
             elif cdata=="lend_channel": 
-                if is_admin(chat_id): send_message(chat_id,f"🎯 Manajemen Channel\n{SEP}\nPilih target posting + 1 thread\nCurrent: {user.get('admin_target','both').upper()}\nMAIN_THREAD_ID: {MAIN_THREAD_ID or 'belum diset'}", get_channel_target_keyboard(user))
-                else: send_message(chat_id,"Not admin",get_back_keyboard())
+                if is_admin(chat_id): edit_message_fast(chat_id,msg_id,f"🎯 Manajemen Channel\n{SEP}\nPilih target posting + 1 thread\nCurrent: {user.get('admin_target','both').upper()}", get_channel_target_keyboard(user))
+                else: edit_message_fast(chat_id,msg_id,"Not admin",get_back_keyboard())
             elif cdata=="admin_set_channel":
-                if is_admin(chat_id): user["admin_target"]="channel"; save_user_to_db(uid,user); send_message(chat_id,f"Set ke CHANNEL ONLY\n{SEP}\nMenfess cuma ke {CHANNEL_ID}", get_channel_target_keyboard(user))
+                if is_admin(chat_id): user["admin_target"]="channel"; save_user_to_db(uid,user); edit_message_fast(chat_id,msg_id,f"Set ke CHANNEL ONLY\n{SEP}\nMenfess cuma ke {CHANNEL_ID}", get_channel_target_keyboard(user))
             elif cdata=="admin_set_threads":
-                if is_admin(chat_id): user["admin_target"]="threads"; save_user_to_db(uid,user); send_message(chat_id,f"Set ke THREADS ONLY\n{SEP}\nMenfess cuma ke Threads", get_channel_target_keyboard(user))
+                if is_admin(chat_id): user["admin_target"]="threads"; save_user_to_db(uid,user); edit_message_fast(chat_id,msg_id,f"Set ke THREADS ONLY\n{SEP}\nMenfess cuma ke Threads", get_channel_target_keyboard(user))
             elif cdata=="admin_set_both":
-                if is_admin(chat_id): user["admin_target"]="both"; save_user_to_db(uid,user); send_message(chat_id,f"Set ke BOTH\n{SEP}\nMenfess ke Channel + Threads", get_channel_target_keyboard(user))
+                if is_admin(chat_id): user["admin_target"]="both"; save_user_to_db(uid,user); edit_message_fast(chat_id,msg_id,f"Set ke BOTH\n{SEP}\nMenfess ke Channel + Threads", get_channel_target_keyboard(user))
             elif cdata=="admin_noop": pass
             elif cdata=="close":
                 try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",json={"chat_id":chat_id,"message_id":msg_id},timeout=3)
@@ -341,7 +374,7 @@ def main_handler():
                 if mid.isdigit():
                     try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",json={"chat_id":CHANNEL_ID,"message_id":int(mid)},timeout=3)
                     except: pass
-                send_message(chat_id,"Deleted",get_back_keyboard())
+                edit_message_fast(chat_id,msg_id,"Deleted",get_back_keyboard())
         return "ok",200
     except Exception as e:
         try:
