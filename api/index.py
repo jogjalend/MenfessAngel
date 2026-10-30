@@ -1,5 +1,5 @@
 from flask import Flask, request
-import os, requests, io, psycopg2, random, re, traceback, copy
+import os, requests, io, psycopg2, random, re, traceback, copy, time
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
@@ -84,6 +84,9 @@ def get_user(uid):
     return u
 def is_admin(uid): return str(uid) in ADMIN_ID.split(",") if ADMIN_ID else False
 
+def send_typing(chat_id):
+    try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendChatAction",json={"chat_id":chat_id,"action":"typing"},timeout=2)
+    except: pass
 def send_message(chat_id,text,kb=None):
     try:
         kb_fancy=None
@@ -122,34 +125,25 @@ def edit_message(chat_id, msg_id, text, kb=None):
         r2=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json=payload2,timeout=10)
         if r2.status_code!=200: send_message(chat_id,text,kb)
     except: send_message(chat_id,text,kb)
-
 def report_error(chat_id, where, error):
     print(f"[ERROR in {where}] {error}\n{traceback.format_exc()}")
     if ADMIN_ID:
         try:
             err_text = f"🚨 BOT ERROR\n{SEP}\nWhere: {where}\nUser: {chat_id}\nError: {str(error)[:400]}\n{SEP}\n{traceback.format_exc()[-600:]}"
             for aid in ADMIN_ID.split(","):
-                if aid.strip():
-                    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":aid.strip(),"text":err_text},timeout=5)
+                if aid.strip(): requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":aid.strip(),"text":err_text},timeout=5)
         except: pass
-    try:
-        send_message(chat_id,f"⚠️ Oops error di {where}\n{SEP}\n{str(error)[:200]}\n\nCoba /start lagi ya, error udah gw laporin ke admin.",get_main_keyboard(is_admin(chat_id)))
+    try: send_message(chat_id,f"⚠️ Oops error di {where}\n{SEP}\n{str(error)[:200]}\n\nCoba /start lagi ya.",get_main_keyboard(is_admin(chat_id)))
     except: pass
 
 def get_welcome_text(user): return f"Hi !\n{SEP}\nPublish to @menfessangel\nTap Post!\n\nKuota\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5"
 def get_back_keyboard(): return {"inline_keyboard": [[{"text": "Back", "callback_data": "back_home"}]]}
 def get_main_keyboard(is_ad=False):
-    kb={"inline_keyboard": [
-        [{"text": "👤 My Profile", "callback_data": "my_profile"}, {"text": "💌 Post", "callback_data": "post"}], 
-        [{"text": "📧 Threads Setting", "callback_data": "threads"}], 
-        [{"text": "📈 Stats", "callback_data": "stats"}, {"text": "ℹ️ Info Bot", "callback_data": "info_bot"}]
-    ]}
+    kb={"inline_keyboard": [[{"text": "👤 My Profile", "callback_data": "my_profile"}, {"text": "💌 Post", "callback_data": "post"}], [{"text": "📧 Threads Setting", "callback_data": "threads"}], [{"text": "📈 Stats", "callback_data": "stats"}, {"text": "ℹ️ Info Bot", "callback_data": "info_bot"}]]}
     if is_ad: kb["inline_keyboard"].append([{"text": "ADMIN PANEL", "callback_data": "admin_panel"}])
     return kb
-def get_menu_1():
-    return {"inline_keyboard": [[{"text": "🔔 Tag", "callback_data": "lend_tag"}],[{"text": "📥 Mode Persetujuan", "callback_data": "lend_persetujuan"}],[{"text": "🗑️ Menghapus Pesan", "callback_data": "lend_hapus"}],[{"text": "🇮🇩 Lang", "callback_data": "lend_lang"}, {"text": "✅ Tutup", "callback_data": "close"}, {"text": "▶️ Lainnya", "callback_data": "lend_page2"}]]}
-def get_menu_2():
-    return {"inline_keyboard": [[{"text": "📜 Peraturan", "callback_data": "lend_peraturan"}],[{"text": "⚠️ Peringatan", "callback_data": "lend_peringatan"}],[{"text": "🚫 Daftar Hitam", "callback_data": "lend_blacklist"}],[{"text": "🔐 Perizinan", "callback_data": "lend_izin"}],[{"text": "📋 Log Saluran", "callback_data": "lend_log"}],[{"text": "🎯 Manajemen Channel", "callback_data": "lend_channel"}],[{"text": "⬅️ Kembali", "callback_data": "lend_page1"}, {"text": "❌ Tutup", "callback_data": "close"}]]}
+def get_menu_1(): return {"inline_keyboard": [[{"text": "🔔 Tag", "callback_data": "lend_tag"}],[{"text": "📥 Mode Persetujuan", "callback_data": "lend_persetujuan"}],[{"text": "🗑️ Menghapus Pesan", "callback_data": "lend_hapus"}],[{"text": "🇮🇩 Lang", "callback_data": "lend_lang"}, {"text": "✅ Tutup", "callback_data": "close"}, {"text": "▶️ Lainnya", "callback_data": "lend_page2"}]]}
+def get_menu_2(): return {"inline_keyboard": [[{"text": "📜 Peraturan", "callback_data": "lend_peraturan"}],[{"text": "⚠️ Peringatan", "callback_data": "lend_peringatan"}],[{"text": "🚫 Daftar Hitam", "callback_data": "lend_blacklist"}],[{"text": "🔐 Perizinan", "callback_data": "lend_izin"}],[{"text": "📋 Log Saluran", "callback_data": "lend_log"}],[{"text": "🎯 Manajemen Channel", "callback_data": "lend_channel"}],[{"text": "⬅️ Kembali", "callback_data": "lend_page1"}, {"text": "❌ Tutup", "callback_data": "close"}]]}
 def get_channel_target_keyboard(user):
     target=user.get("admin_target","both")
     return {"inline_keyboard": [[{"text": f"📍 Target: {target.upper()}", "callback_data": "admin_noop"}],[{"text": f"{'✅ ' if target=='channel' else ''}📢 Channel Only", "callback_data": "admin_set_channel"}],[{"text": f"{'✅ ' if target=='threads' else ''}🧵 Threads Only", "callback_data": "admin_set_threads"}],[{"text": f"{'✅ ' if target=='both' else ''}🚀 Both (Channel+Threads)", "callback_data": "admin_set_both"}],[{"text": f"🆔 MAIN ID: {(MAIN_THREAD_ID[:12]+'...') if MAIN_THREAD_ID and len(MAIN_THREAD_ID)>12 else (MAIN_THREAD_ID or 'BELUM SET')}", "callback_data": "admin_noop"}],[{"text": "⬅️ Kembali", "callback_data": "lend_page2"}]]}
@@ -265,7 +259,7 @@ def main_handler():
     data={}; where="init"
     try:
         where="init_db"; init_db()
-        if request.method=="GET": return "JogjaLend Bot V108.5 OK",200
+        if request.method=="GET": return "JogjaLend Bot V108.6 OK",200
         where="parse_json"; data=request.get_json(force=True,silent=True) or {}
         if "message" in data:
             msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id)
@@ -322,6 +316,9 @@ def main_handler():
         if "callback_query" in data:
             cq=data["callback_query"]; chat_id=cq["message"]["chat"]["id"]; uid=str(chat_id); cdata=cq["data"]; msg_id=cq["message"]["message_id"]
             where=f"callback {cdata}"
+            send_typing(chat_id)
+            try: time.sleep(0.1)
+            except: pass
             try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",json={"callback_query_id":cq["id"]},timeout=2)
             except: pass
             user=get_user(uid)
