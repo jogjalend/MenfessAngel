@@ -317,7 +317,11 @@ def main_handler():
             cq=data["callback_query"]; chat_id=cq["message"]["chat"]["id"]; uid=str(chat_id); cdata=cq["data"]; msg_id=cq["message"]["message_id"]
             where=f"callback {cdata}"
             send_typing(chat_id)
-            try: time.sleep(0.4)
+            try: time.sleep(0.25)
+            except: pass
+            try:
+                edit_message(chat_id, msg_id, "⏳ Loading...", None)
+                time.sleep(0.25)
             except: pass
             try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",json={"callback_query_id":cq["id"]},timeout=2)
             except: pass
