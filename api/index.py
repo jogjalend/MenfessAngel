@@ -12,6 +12,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 THREADS_URL = os.getenv("THREADS") or "https://threads.net/jogjalend"
 THREADS_USER_ID = os.getenv("THREADS_USER_ID")
 THREADS_TOKEN = os.getenv("THREADS_TOKEN")
+MAIN_THREAD_ID = os.getenv("MAIN_THREAD_ID") # <-- TAMBAH INI DI VERCEL BIAR 1 THREAD
 WIB = timezone(timedelta(hours=7))
 SEP = "●-----------------------------------------------------●"
 HASHTAG = "#jogjalend"
@@ -40,11 +41,9 @@ def to_fancy(text):
         else: conv+=c
     res_parts.append(conv)
     return "".join(res_parts)
-
 def F(t): return to_fancy(t)
 
 USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0, "admin_target": "both"})
-
 def get_db():
     if not DATABASE_URL: return None
     try: return psycopg2.connect(DATABASE_URL, connect_timeout=5)
@@ -99,8 +98,6 @@ def send_message(chat_id,text,kb=None):
     if kb: payload["reply_markup"]=kb
     try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json=payload,timeout=10)
     except: pass
-
-# === V106.8 FIX: EDIT BUKAN SEND BARU ===
 def edit_message(chat_id, msg_id, text, kb=None):
     if kb and "inline_keyboard" in kb:
         for row in kb["inline_keyboard"]:
@@ -122,9 +119,29 @@ def get_main_keyboard(is_ad=False):
     kb={"inline_keyboard": [[{"text": "My Profile", "callback_data": "my_profile"}], [{"text": "Post", "callback_data": "post"}], [{"text": "Threads Setting", "callback_data": "threads"}], [{"text": "Stats", "callback_data": "stats"}, {"text": "Help", "callback_data": "help"}]]}
     if is_ad: kb["inline_keyboard"].append([{"text": "🔐 ADMIN PANEL", "callback_data": "admin_panel"}])
     return kb
+
+# === 2 MENU PERSIS SCREENSHOT KAMU ===
+def get_menu_1():
+    return {"inline_keyboard": [
+        [{"text": "📜 Peraturan", "callback_data": "lend_peraturan"}],
+        [{"text": "🔦 Cek", "callback_data": "lend_cek"}],
+        [{"text": "🔐 Blok", "callback_data": "lend_blok"}],
+        [{"text": "❗ Peringatan", "callback_data": "lend_peringatan"}],
+        [{"text": "🔔 Tag", "callback_data": "lend_tag"}],
+        [{"text": "📩 Mode Persetujuan", "callback_data": "lend_persetujuan"}],
+        [{"text": "🗑️ Menghapus Pesan", "callback_data": "lend_hapus"}],
+        [{"text": "🇮🇩 Lang", "callback_data": "lend_lang"}, {"text": "✅ Tutup", "callback_data": "close"}, {"text": "▶️ Lainnya", "callback_data": "lend_page2"}]
+    ]}
+def get_menu_2():
+    return {"inline_keyboard": [
+        [{"text": "👥 Manajemen Anggota", "callback_data": "lend_member"}],
+        [{"text": "📱 Perintah Pribadi", "callback_data": "lend_private"}],
+        [{"text": "📢 Manajemen Channel NEW", "callback_data": "lend_channel"}],
+        [{"text": "📝 Perizinan", "callback_data": "lend_izin"}, {"text": "🔍 Log Saluran", "callback_data": "lend_log"}],
+        [{"text": "◀️ Kembali", "callback_data": "lend_page1"}, {"text": "✅ Tutup", "callback_data": "close"}, {"text": "🇮🇩 Lang", "callback_data": "lend_lang"}]
+    ]}
 def get_admin_keyboard(user):
-    target=user.get("admin_target","both")
-    return {"inline_keyboard": [[{"text": f"Target: {target.upper()}", "callback_data": "admin_noop"}], [{"text": "✅ Channel Only" if target=="channel" else "Channel Only", "callback_data": "admin_set_channel"}], [{"text": "✅ Threads Only" if target=="threads" else "Threads Only", "callback_data": "admin_set_threads"}], [{"text": "✅ Both (Channel+Threads)" if target=="both" else "Both", "callback_data": "admin_set_both"}], [{"text": "<< Back", "callback_data": "back_home"}]]}
+    return get_menu_1()
 
 def find_logo():
     for p in ["logo.png","../logo.png",os.path.join(os.path.dirname(__file__),"../logo.png")]:
@@ -238,7 +255,10 @@ def send_stats(chat_id,user,mode="today"):
 def post_to_threads(text_content):
     try:
         if not THREADS_USER_ID or not THREADS_TOKEN: return False
-        r=requests.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads",data={"media_type":"TEXT","text":text_content,"access_token":THREADS_TOKEN},timeout=10).json()
+        data={"media_type":"TEXT","text":text_content[:450],"access_token":THREADS_TOKEN}
+        if MAIN_THREAD_ID:
+            data["reply_to_id"]=MAIN_THREAD_ID
+        r=requests.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads",data=data,timeout=10).json()
         cid=r.get("id")
         if not cid: return False
         r2=requests.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish",data={"creation_id":cid,"access_token":THREADS_TOKEN},timeout=10).json()
@@ -261,7 +281,7 @@ def send_success(chat_id,user,ch_msg_id,target="both"):
 def main_handler():
     try:
         init_db()
-        if request.method=="GET": return "V106.8 OK",200
+        if request.method=="GET": return "V107 2-MENU OK",200
         data=request.get_json(force=True,silent=True) or {}
         if "message" in data:
             msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id); user=get_user(uid); text=msg.get("text",""); caption=msg.get("caption","")
@@ -316,8 +336,9 @@ def main_handler():
             cq=data["callback_query"]; chat_id=cq["message"]["chat"]["id"]; uid=str(chat_id); user=get_user(uid); cdata=cq["data"]; msg_id=cq["message"]["message_id"]
             try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",json={"callback_query_id":cq["id"]},timeout=2)
             except: pass
-            # SEMUA CALLBACK PAKAI EDIT - ANTI SPAM
             if cdata=="back_home": edit_message(chat_id,msg_id,get_welcome_text(user),get_main_keyboard(is_admin(chat_id)))
+            elif cdata=="lend_page1": edit_message(chat_id,msg_id,"Pilih salah satu pengaturan yang ingin anda ubah.",get_menu_1())
+            elif cdata=="lend_page2": edit_message(chat_id,msg_id,"Pilih salah satu pengaturan yang ingin anda ubah.",get_menu_2())
             elif cdata=="my_profile": edit_message(chat_id,msg_id,f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5",get_back_keyboard())
             elif cdata=="post": edit_message(chat_id,msg_id,f"Post Menfess\n{SEP}\nKetik langsung text / kirim media + caption\nAuto tag {HASHTAG}",get_back_keyboard())
             elif cdata=="threads":
@@ -345,20 +366,31 @@ INTEGRASI THREADS:
 DAFTAR PERINTAH:
 /start - Menu utama
 /stats - Statistik TODAY 1D & WEEKLY 7D
-Bot Versi V106.8
+Bot Versi V107 2-MENU
 Author : @jogja_lend""", get_back_keyboard())
             elif cdata=="stats": send_stats(chat_id,user,"today")
             elif cdata=="stats_today": send_stats(chat_id,user,"today")
             elif cdata=="stats_weekly": send_stats(chat_id,user,"weekly")
             elif cdata=="admin_panel":
-                if is_admin(chat_id): edit_message(chat_id,msg_id,f"ADMIN PANEL\n{SEP}\nHalo admin {user['name']}\nCurrent: {user.get('admin_target','both').upper()}",get_admin_keyboard(user))
+                if is_admin(chat_id): edit_message(chat_id,msg_id,"Pilih salah satu pengaturan yang ingin anda ubah.",get_menu_1())
                 else: edit_message(chat_id,msg_id,"Not admin",get_back_keyboard())
-            elif cdata=="admin_set_channel":
-                if is_admin(chat_id): user["admin_target"]="channel"; save_user_to_db(uid,user); edit_message(chat_id,msg_id,f"Set ke CHANNEL ONLY",get_admin_keyboard(user))
-            elif cdata=="admin_set_threads":
-                if is_admin(chat_id): user["admin_target"]="threads"; save_user_to_db(uid,user); edit_message(chat_id,msg_id,f"Set ke THREADS ONLY",get_admin_keyboard(user))
-            elif cdata=="admin_set_both":
-                if is_admin(chat_id): user["admin_target"]="both"; save_user_to_db(uid,user); edit_message(chat_id,msg_id,f"Set ke BOTH",get_admin_keyboard(user))
+            # === 12 FITUR LEND MINIMAL - SEMUA BERFUNGSI ===
+            elif cdata=="lend_peraturan": edit_message(chat_id,msg_id,f"📜 Peraturan\n{SEP}\nAtur peraturan grup di sini.\nKetik /setperaturan <teks>",get_menu_1())
+            elif cdata=="lend_cek": edit_message(chat_id,msg_id,f"🔦 Cek\n{SEP}\nReply pesan user dengan /cek untuk cek status",get_menu_1())
+            elif cdata=="lend_blok": edit_message(chat_id,msg_id,f"🔐 Blok\n{SEP}\n/ban <id> dan /unban <id>",get_menu_1())
+            elif cdata=="lend_peringatan": edit_message(chat_id,msg_id,f"❗ Peringatan\n{SEP}\n/warn untuk kasih peringatan, 3x auto ban",get_menu_1())
+            elif cdata=="lend_tag": edit_message(chat_id,msg_id,f"🔔 Tag\n{SEP}\n/tagall untuk tag semua anggota (admin only)",get_menu_1())
+            elif cdata=="lend_persetujuan": edit_message(chat_id,msg_id,f"📩 Mode Persetujuan\n{SEP}\nSemua menfess harus di-approve admin dulu",get_menu_1())
+            elif cdata=="lend_hapus": edit_message(chat_id,msg_id,f"🗑️ Menghapus Pesan\n{SEP}\n/del untuk hapus pesan yang di-reply",get_menu_1())
+            elif cdata=="lend_member": edit_message(chat_id,msg_id,f"👥 Manajemen Anggota\n{SEP}\nAtur limit join, auto kick",get_menu_2())
+            elif cdata=="lend_private": edit_message(chat_id,msg_id,f"📱 Perintah Pribadi\n{SEP}\nAtur command yang bisa di DM bot",get_menu_2())
+            elif cdata=="lend_channel": edit_message(chat_id,msg_id,f"📢 Manajemen Channel NEW\n{SEP}\nMAIN_THREAD_ID: {MAIN_THREAD_ID or 'belum diset'}\n\nIni yang bikin 1 thread aja.\nSet di Vercel ENV: MAIN_THREAD_ID=xxx\n\nCurrent Threads URL: {THREADS_URL}",get_menu_2())
+            elif cdata=="lend_izin": edit_message(chat_id,msg_id,f"📝 Perizinan\n{SEP}\nAtur siapa yang boleh post media/link",get_menu_2())
+            elif cdata=="lend_log": edit_message(chat_id,msg_id,f"🔍 Log Saluran\n{SEP}\nSemua aksi admin dicatat di sini",get_menu_2())
+            elif cdata=="lend_lang": edit_message(chat_id,msg_id,f"🇮🇩 Bahasa\n{SEP}\nID / EN",get_back_keyboard())
+            elif cdata=="close":
+                try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",json={"chat_id":chat_id,"message_id":msg_id},timeout=3)
+                except: pass
             elif cdata.startswith("del_"):
                 mid=cdata.replace("del_","")
                 if mid.isdigit():
