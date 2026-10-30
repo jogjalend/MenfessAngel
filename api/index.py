@@ -15,7 +15,7 @@ THREADS_TOKEN = os.getenv("THREADS_TOKEN")
 MAIN_THREAD_ID = os.getenv("MAIN_THREAD_ID")
 LOG_CHANNEL = os.getenv("LOG_CHANNEL") or CHANNEL_ID
 WIB = timezone(timedelta(hours=7))
-SEP = "●-------------------------------------------------------●"
+SEP = "●---------------------------------------------------●"
 HASHTAG = "#jogjalend"
 
 def to_fancy(text):
@@ -109,22 +109,20 @@ def edit_message(chat_id, msg_id, text, kb=None):
         if r.status_code != 200: send_message(chat_id,text,kb)
     except: send_message(chat_id,text,kb)
 
-# === MAIN MENU POLOS (SESUAI FOTO KAMU) ===
+# === FINAL LAYOUT KAMU ===
 def get_welcome_text(user): 
     return f"Hi !\n{SEP}\nPublish to @menfessangel\nTap Post!\n\nKuota\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5"
 def get_back_keyboard(): 
     return {"inline_keyboard": [[{"text": "Back", "callback_data": "back_home"}]]}
 def get_main_keyboard(is_ad=False):
     kb={"inline_keyboard": [
-        [{"text": "My Profile", "callback_data": "my_profile"}], 
-        [{"text": "Post", "callback_data": "post"}], 
+        [{"text": "👤 My Profile", "callback_data": "my_profile"}, {"text": "💌 Post", "callback_data": "post"}], 
         [{"text": "📧 Threads Setting", "callback_data": "threads"}], 
         [{"text": "📈 Stats", "callback_data": "stats"}, {"text": "ℹ️ Info Bot", "callback_data": "info_bot"}]
     ]}
     if is_ad: kb["inline_keyboard"].append([{"text": "ADMIN PANEL", "callback_data": "admin_panel"}])
     return kb
-
-# === ADMIN PANEL ALA LEND BOT (PAKE EMOJI LENGKAP) ===
+# Admin Panel Lend Style
 def get_menu_1():
     return {"inline_keyboard": [
         [{"text": "🔔 Tag", "callback_data": "lend_tag"}],
