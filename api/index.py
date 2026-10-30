@@ -317,7 +317,7 @@ def main_handler():
             cq=data["callback_query"]; chat_id=cq["message"]["chat"]["id"]; uid=str(chat_id); cdata=cq["data"]; msg_id=cq["message"]["message_id"]
             where=f"callback {cdata}"
             send_typing(chat_id)
-            try: time.sleep(0.1)
+            try: time.sleep(0.4)
             except: pass
             try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",json={"callback_query_id":cq["id"]},timeout=2)
             except: pass
@@ -336,13 +336,10 @@ def main_handler():
                 edit_message(chat_id,msg_id,f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend",kb)
             elif cdata=="info_bot":
                 info_text = (
-                    f"🔧 Bantuan\n{SEP}\n"
+                    f"🔧 Bantuan\n\n"
                     f"Untuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug "
                     f"Anda dapat menulis ke @joglendsupportBot.\n\n"
-                    f"JogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n\n"
-                    f"Versi bot: V108.6\n"
-                    f"Channel: {CHANNEL_ID}\n"
-                    f"Threads: threads.net/jogjalend"
+                    f"JogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend."
                 )
                 edit_message(chat_id, msg_id, info_text, get_back_keyboard())
             elif cdata=="stats": send_stats(chat_id,user,"today")
