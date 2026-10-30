@@ -335,7 +335,16 @@ def main_handler():
                 kb={"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message(chat_id,msg_id,f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend",kb)
             elif cdata=="info_bot":
-                info_text = f"Info Bot - @menfessangel\n{SEP}\nNama: JogjaLend Bot Angel\nChannel: @menfessangel\nThreads: threads.net/jogjalend\n\nFitur:\n- Menfess Anonim Text & Media\n- Auto Watermark + Tag {HASHTAG}\n- Statistik Harian & Mingguan\n- Auto Post ke Threads\n- Admin Panel Lite\n\nAuthor: @jogja_lend\nReset Kuota: 00:00 WIB\n{SEP}\nKetik /start untuk mulai menfess!"
+                # === FIXED: Kata-kata Bantuan ala Channel Help ===
+                info_text = (
+                    f"🔧 Bantuan\n{SEP}\n"
+                    f"Untuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug "
+                    f"Anda dapat menulis ke @joglendsupportBot.\n\n"
+                    f"Channel Help adalah bot yang dikembangkan oleh tim Bruninoit dengan NodeJS.\n"
+                    f"Telah daring sejak 6 September 2016 dan terus diperbarui.\n\n"
+                    f"{SEP}\n"
+                    f"Versi bot: 9.0"
+                )
                 edit_message(chat_id, msg_id, info_text, get_back_keyboard())
             elif cdata=="stats": send_stats(chat_id,user,"today")
             elif cdata=="stats_today": send_stats(chat_id,user,"today")
