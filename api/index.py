@@ -1,5 +1,5 @@
 from flask import Flask, request
-import os, requests, io, psycopg2, random, re, traceback, copy
+import os, requests, io, psycopg2, random, re, traceback, copy, time
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
@@ -110,12 +110,6 @@ def report_error(chat_id, where, error):
         print(f"[IGNORED TIMEOUT in {where}]")
         return
     print(f"[ERROR in {where}] {error}\n{traceback.format_exc()}")
-    if ADMIN_ID:
-        try:
-            err_text = f"🚨 BOT ERROR\n{SEP}\nWhere: {where}\nUser: {chat_id}\nError: {err_str[:300]}"
-            for aid in ADMIN_ID.split(","):
-                if aid.strip(): requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":aid.strip(),"text":err_text},timeout=5)
-        except: pass
 
 def get_welcome_text(user): return f"Hi !\n{SEP}\nPublish to @menfessangel\nTap Post!\n\nKuota\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5"
 def get_back_keyboard(): return {"inline_keyboard": [[{"text": "Back", "callback_data": "back_home"}]]}
@@ -165,11 +159,11 @@ def make_today_chart(user):
         hours=["08:00","12:00","16:00","20:00"]; total=user['today_text']+user['today_media']
         highs=[0]*4 if total==0 else [random.randint(0,2)+(total//4) for _ in hours]
         max_val=max(highs) if max(highs)>0 else 3
-        ct,cb,cl,cr=80,370,50,700; ch=cb-ct
+        ct,cb,cl,cr=80,370,50,700
         slot_w=(cr-cl)//len(hours)
         for idx in range(len(hours)):
             xc=cl+idx*slot_w+slot_w//2; v=highs[idx]
-            yh=cb-int(v/max_val*ch*0.8) if max_val>0 else cb
+            yh=cb-int(v/max_val*250) if max_val>0 else cb
             color='#10B981' if idx%2==0 else '#EF4444'
             if total==0: color='#27272A'
             draw.rectangle([xc-15,yh,xc+15,cb],fill=color)
@@ -183,10 +177,10 @@ def make_weekly_chart(user):
         draw.rectangle([0,0,W,60],fill='#161618')
         draw.text((20,12),"WEEKLY 7D",fill='white',font=f_title)
         days=["22","23","24","25","26","27","28"]; vals=[random.randint(1,4) for _ in days]; max_v=max(vals)
-        ct,cb,cl,cr=80,370,50,700; ch=cb-ct; slot_w=(cr-cl)//len(days)
+        ct,cb,cl,cr=80,370,50,700; slot_w=(cr-cl)//len(days)
         for idx in range(len(days)):
             xc=cl+idx*slot_w+slot_w//2; v=vals[idx]
-            yv=cb-int(v/max_v*ch*0.8); draw.rectangle([xc-14,yv,xc+14,cb],fill='#3B82F6')
+            yv=cb-int(v/max_v*250); draw.rectangle([xc-14,yv,xc+14,cb],fill='#3B82F6')
             draw.text((xc-8,cb+8),days[idx],fill='#A1A1AA',font=f_small)
         bio=io.BytesIO(); img.save(bio,format='JPEG',quality=70); bio.seek(0); return bio
     except: return None
@@ -234,7 +228,7 @@ def main_handler():
     data={}; where="init"
     try:
         where="init_db"; init_db()
-        if request.method=="GET": return "JogjaLend Bot V109.3 DELETE-REPLACE OK",200
+        if request.method=="GET": return "JogjaLend Bot V109.4 SLEEP-1.5 DELETE OK",200
         where="parse_json"; data=request.get_json(force=True,silent=True) or {}
         if "message" in data:
             msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id)
@@ -290,7 +284,11 @@ def main_handler():
             where=f"callback {cdata}"
             try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",json={"callback_query_id":cq["id"]},timeout=2)
             except: pass
-            # DELETE TAB LAMA - MUNCUL TAB BARU (NO TYPING)
+            
+            # SLEEP 1.5 DETIK - GAK PAKE MENGETIK
+            time.sleep(1.5)
+            
+            # DELETE TAB LAMA - GANTI LAMAN BARU
             try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",json={"chat_id":chat_id,"message_id":msg_id},timeout=2)
             except: pass
             user=get_user(uid)
