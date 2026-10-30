@@ -15,7 +15,7 @@ THREADS_TOKEN = os.getenv("THREADS_TOKEN")
 MAIN_THREAD_ID = os.getenv("MAIN_THREAD_ID")
 LOG_CHANNEL = os.getenv("LOG_CHANNEL") or CHANNEL_ID
 WIB = timezone(timedelta(hours=7))
-SEP = "●---------------------------------------------------●"
+SEP = "●-------------------------●-------------------------●"
 HASHTAG = "#jogjalend"
 
 def to_fancy(text):
@@ -334,18 +334,21 @@ def main_handler():
                 user["threads_on"]=not user.get("threads_on",False); save_user_to_db(uid,user)
                 kb={"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message(chat_id,msg_id,f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend",kb)
+            
+            # --- INI YANG BARU LU MINTA ---
             elif cdata=="info_bot":
-                # === FIXED: Kata-kata Bantuan ala Channel Help ===
-                info_text = (
-                    f"🔧 Bantuan\n{SEP}\n"
-                    f"Untuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug "
-                    f"Anda dapat menulis ke @joglendsupportBot.\n\n"
-                    f"Channel Help adalah bot yang dikembangkan oleh tim Bruninoit dengan NodeJS.\n"
-                    f"Telah daring sejak 6 September 2016 dan terus diperbarui.\n\n"
-                    f"{SEP}\n"
-                    f"Versi bot: 9.0"
-                )
-                edit_message(chat_id, msg_id, info_text, get_back_keyboard())
+    info_text = (
+        f"🔧 Bantuan\n{SEP}\n"
+        f"Untuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug "
+        f"Anda dapat menulis ke @joglendsupportBot.\n\n"
+        f"JogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n\n"
+        f"Versi bot: V108.6\n"
+        f"Channel: {CHANNEL_ID}\n"
+        f"Threads: threads.net/jogjalend"
+    )
+    edit_message(chat_id, msg_id, info_text, get_back_keyboard())
+            # --- END BARU ---
+
             elif cdata=="stats": send_stats(chat_id,user,"today")
             elif cdata=="stats_today": send_stats(chat_id,user,"today")
             elif cdata=="stats_weekly": send_stats(chat_id,user,"weekly")
