@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - ADMIN MONO + PRE VERSI + BACK TOTAL USER
+# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - CLICKABLE LINK + ANTI 500
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time
 from datetime import datetime, timezone, timedelta
@@ -76,7 +76,7 @@ def set_setting(k, v):
 def to_fancy(text):
     if not text:
         return ""
-    pattern = r'<plain>.*?</plain>|<code>.*?</code>|<pre>.*?</pre>|<[^>]+>|@\w+|#\w+|/\w+|https?://\S+|threads\.net/\S+|t\.me/\S+'
+    pattern = r'<plain>.*?</plain>|<code>.*?</code>|<pre>.*?</pre>|<a[^>]*>.*?</a>|<[^>]+>|@\w+|#\w+|/\w+|https?://\S+|threads\.net/\S+|t\.me/\S+'
     res_parts = []; last_idx = 0
     for m in re.finditer(pattern, text, flags=re.DOTALL):
         before = text[last_idx:m.start()]
@@ -96,11 +96,14 @@ def to_fancy(text):
     res_parts.append(conv); return "".join(res_parts)
 def F(t): return to_fancy(t)
 def M(t):
-    # Mono per baris pake <code>, biar gak jadi blok abu-abu + SALIN KODE kayak <pre>
+    # Mono per baris, TAPI baris yang ada link / mention / command JANGAN dibungkus <code>
+    # Karena <code> matiin klik di Telegram
     out = []
     for line in t.split("\n"):
         if line.strip() == "":
             out.append("")
+        elif "http" in line or "@" in line or "tg://" in line or line.strip().startswith("/"):
+            out.append(line)
         else:
             out.append(f"<code>{line}</code>")
     return "\n".join(out)
@@ -349,17 +352,20 @@ def send_user_list(chat_id):
         if not rows:
             send_message(chat_id, M("Belum ada user."), back_kb)
             return
-        header = f"Total User: {len(rows)}\n------------------------------\nSemua Member:\n"
-        txt = header
+        header = M(f"Total User: {len(rows)}\n------------------------------\nSemua Member:")
+        txt = header + "\n"
         for i, r in enumerate(rows, 1):
             status = " BANNED" if r[4] else ""
-            display = f"@{r[2]}" if r[2] else "-"
+            if r[2]:
+                display = f"<a href=\"tg://user?id={r[0]}\">@{r[2]}</a>"
+            else:
+                display = f"<a href=\"tg://user?id={r[0]}\">{r[0]}</a>"
             line = f"{i}. {display} - {r[0]} ({r[3]}){status}\n"
             if len(txt) + len(line) > 3200:
-                send_message(chat_id, M(txt), back_kb)
-                txt = f"Lanjutan ({i}/{len(rows)}):\n"
+                send_message(chat_id, txt, back_kb)
+                txt = M(f"Lanjutan ({i}/{len(rows)}):") + "\n"
             txt += line
-        send_message(chat_id, M(txt), back_kb)
+        send_message(chat_id, txt, back_kb)
     except Exception as e:
         send_message(chat_id, f"Gagal ambil list: {e}")
 
@@ -445,7 +451,9 @@ def view_logs():
 def main_handler():
     data = {}; where = "init"
     try:
-        where = "init_db"; init_db()
+        where = "init_db"
+        try: init_db()
+        except: pass
         if request.method == "GET": return "JogjaLend Bot V110.9 FULL OK", 200
         where = "parse_json"; data = request.get_json(force=True, silent=True) or {}
         if "message" in data:
@@ -574,11 +582,13 @@ def main_handler():
                 if db:
                     cur = db.cursor(); cur.execute("SELECT SUM(total_text), SUM(total_media) FROM menfess_users"); s = cur.fetchone(); cur.close(); db.close()
                     edit_message_fast(chat_id, msg_id, M(f"GLOBAL\n------------------------------\nText : {s[0]}\nMedia: {s[1]}"), get_admin_panel())
-            elif cdata == "admin_broadcast": edit_message_fast(chat_id, msg_id, M("Broadcast\n------------------------------\nKetik: /broadcast <pesan>\nAkan kirim ke semua user di DB"), get_admin_panel())
+            elif cdata == "admin_broadcast":
+                edit_message_fast(chat_id, msg_id, M("Broadcast\n------------------------------\nKetik:") + "\n/broadcast <pesan>\n" + M("Akan kirim ke semua user di DB"), get_admin_panel())
             elif cdata == "admin_webhook":
                 r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo", timeout=5).json()
                 res = r.get('result', {})
-                edit_message_fast(chat_id, msg_id, M(f"Webhook Info\n------------------------------\nURL: {res.get('url')}\nPending: {res.get('pending_update_count')}\nLastError: {res.get('last_error_message')}\n\nUntuk set ulang /setwebhook"), get_admin_panel())
+                url = res.get('url', '')
+                edit_message_fast(chat_id, msg_id, M("Webhook Info\n------------------------------") + f"\nURL: <a href=\"{url}\">{url}</a>\n" + M(f"Pending: {res.get('pending_update_count')}\nLastError: {res.get('last_error_message')}\n\nUntuk set ulang:") + "\n/setwebhook", get_admin_panel())
             elif cdata == "admin_logs": edit_message_fast(chat_id, msg_id, M(f"Logs\n------------------------------\nError otomatis ke {LOG_CHANNEL}\nCek /webhookinfo dan Vercel Logs"), get_admin_panel())
             elif cdata == "admin_noop": pass
             elif cdata == "close":
