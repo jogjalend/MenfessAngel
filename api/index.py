@@ -1,525 +1,346 @@
-from flask import Flask, request
-import os, requests, io, psycopg2, random, re, traceback, copy, time
-from datetime import datetime, timezone, timedelta
-from collections import defaultdict
+import os, json, random, string, time, datetime, traceback, re, io, html
+from flask import Flask, request, jsonify
+import requests
 from PIL import Image, ImageDraw, ImageFont
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
+
+# ============ CONFIG ============
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID") or "@menfessangel"
-ADMIN_ID = os.getenv("ADMIN_ID") or ""
+ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS","").split(",") if x.strip().isdigit()]
+CHANNEL_ID = os.getenv("CHANNEL_ID","@menfessangel")
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME","menfessangel")
+HASHTAG = os.getenv("HASHTAG","#JogjaLend")
+SUPPORT_BOT = "@joglendsupportBot"
+TEAM = "@jogja_lend"
 DATABASE_URL = os.getenv("DATABASE_URL")
-THREADS_URL = os.getenv("THREADS") or "https://threads.net/jogjalend"
-THREADS_USER_ID = os.getenv("THREADS_USER_ID")
-THREADS_TOKEN = os.getenv("THREADS_TOKEN")
-MAIN_THREAD_ID = os.getenv("MAIN_THREAD_ID")
-LOG_CHANNEL = os.getenv("LOG_CHANNEL") or CHANNEL_ID
-WEBHOOK_URL = os.getenv("WEBHOOK_URL") or "https://jogja-lend.vercel.app/api/index"
-WIB = timezone(timedelta(hours=7))
+THREADS_TOKEN = os.getenv("THREADS_TOKEN","")
+BOT_VERSION = "V110.6"
+PYTHON_VERSION = "3.12"
+DB_NAME = "PostgreSQL (Neon)"
+
+API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+
+# ============ FANCY FONT ============
+_FANCY_MAP = {}
+_normal = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+_fancy = "𝖺𝖻𝖼𝖽𝖾𝖿𝗀𝗁𝗂𝗃𝗄𝗅𝗆𝗇𝗈𝗉𝗊𝗋𝗌𝗍𝗎𝗏𝗐𝗑𝗒𝗓𝖠𝖡𝖢𝖣𝖤𝖥𝖦𝖧𝖨𝖩𝖪𝖫𝖬𝖭𝖮𝖯𝖰𝖱𝖲𝖳𝖴𝖵𝖶𝖷𝖸𝖹𝟢𝟣𝟤𝟥𝟦𝟧𝟨𝟩𝟪𝟫"
+for a,b in zip(_normal, _fancy):
+    _FANCY_MAP[a]=b
+
+def F(text):
+    return "".join(_FANCY_MAP.get(c,c) for c in text)
+
 SEP = "●-----------------------------------------------------●"
-HASHTAG = "#jogjalend"
 
-def to_fancy(text):
-    pattern = r'@\w+|#\w+|/\w+|https?://\S+|threads\.net/\S+|t\.me/\S+'
-    res_parts = []; last_idx = 0
-    for m in re.finditer(pattern, text):
-        before = text[last_idx:m.start()]
-        conv = ""
-        for c in before:
-            if 'A' <= c <= 'Z': conv+=chr(0x1D5A0 + ord(c)-65)
-            elif 'a' <= c <= 'z': conv+=chr(0x1D5BA + ord(c)-97)
-            elif '0' <= c <= '9': conv+=chr(0x1D7E2 + ord(c)-48)
-            else: conv+=c
-        res_parts.append(conv); res_parts.append(m.group(0)); last_idx = m.end()
-    tail = text[last_idx:]; conv = ""
-    for c in tail:
-        if 'A' <= c <= 'Z': conv+=chr(0x1D5A0 + ord(c)-65)
-        elif 'a' <= c <= 'z': conv+=chr(0x1D5BA + ord(c)-97)
-        elif '0' <= c <= '9': conv+=chr(0x1D7E2 + ord(c)-48)
-        else: conv+=c
-    res_parts.append(conv); return "".join(res_parts)
-def F(t): return to_fancy(t)
-USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0, "admin_target": "both", "warn": 0})
-
+# ============ DB ============
 def get_db():
-    if not DATABASE_URL: return None
-    try: return psycopg2.connect(DATABASE_URL, connect_timeout=5)
-    except: return None
+    if not DATABASE_URL:
+        return None
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
 def init_db():
-    db=get_db()
-    if not db: return
     try:
-        cur=db.cursor()
-        cur.execute("CREATE TABLE IF NOT EXISTS menfess_users (user_id TEXT PRIMARY KEY, name TEXT, username TEXT, threads_on BOOLEAN DEFAULT FALSE, today_text INT DEFAULT 0, today_media INT DEFAULT 0, last_date TEXT, banned BOOLEAN DEFAULT FALSE, total_text INT DEFAULT 0, total_media INT DEFAULT 0, total_chars INT DEFAULT 0, admin_target TEXT DEFAULT 'both', warn INT DEFAULT 0)")
-        cur.execute("CREATE TABLE IF NOT EXISTS error_logs (id SERIAL PRIMARY KEY, created_at TEXT, where_at TEXT, message TEXT)")
-        db.commit(); cur.close(); db.close()
-    except: pass
-def load_user_from_db(uid):
-    db=get_db()
-    if not db: return None
-    try:
-        cur=db.cursor()
-        cur.execute("SELECT name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target, warn FROM menfess_users WHERE user_id=%s",(uid,))
-        row=cur.fetchone(); cur.close(); db.close()
-        if row: return {"name":row[0] or "", "username":row[1] or "", "threads_on":row[2] or False, "today_text":row[3] or 0, "today_media":row[4] or 0, "last_date":row[5] or "", "banned":row[6] or False, "total_text":row[7] or 0, "total_media":row[8] or 0, "total_chars":row[9] or 0, "admin_target":row[10] or "both", "warn":row[11] or 0}
-    except: return None
-    return None
-def save_user_to_db(uid,user):
-    db=get_db()
-    if not db: return
-    try:
-        cur=db.cursor()
-        cur.execute("INSERT INTO menfess_users (user_id, name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target, warn) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (user_id) DO UPDATE SET name=%s, username=%s, threads_on=%s, today_text=%s, today_media=%s, last_date=%s, banned=%s, total_text=%s, total_media=%s, total_chars=%s, admin_target=%s, warn=%s",(uid,user["name"],user["username"],user["threads_on"],user["today_text"],user["today_media"],user["last_date"],user["banned"],user["total_text"],user["total_media"],user.get("total_chars",0),user.get("admin_target","both"),user.get("warn",0),user["name"],user["username"],user["threads_on"],user["today_text"],user["today_media"],user["last_date"],user["banned"],user["total_text"],user["total_media"],user.get("total_chars",0),user.get("admin_target","both"),user.get("warn",0)))
-        db.commit(); cur.close(); db.close()
-    except: pass
-def get_user(uid):
-    u=USERS[uid]
-    if u["last_date"]=="" and DATABASE_URL:
-        d=load_user_from_db(uid)
-        if d: USERS[uid]=d; u=USERS[uid]
-    today=datetime.now(WIB).strftime("%Y-%m-%d")
-    if u["last_date"]!=today: u["today_text"]=0; u["today_media"]=0; u["last_date"]=today; save_user_to_db(uid,u)
-    return u
-def is_admin(uid): return str(uid) in ADMIN_ID.split(",") if ADMIN_ID else False
-
-def send_message(chat_id,text,kb=None):
-    try:
-        kb_fancy=None
-        if kb and "inline_keyboard" in kb:
-            kb_fancy=copy.deepcopy(kb)
-            for row in kb_fancy["inline_keyboard"]:
-                for btn in row:
-                    if "text" in btn and "url" not in btn: btn["text"]=F(btn["text"])
-        payload={"chat_id":chat_id,"text":F(text),"parse_mode":"HTML","disable_web_page_preview":True}
-        if kb_fancy: payload["reply_markup"]=kb_fancy
-        r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json=payload,timeout=10)
-        if r.status_code==200: return True
-    except: pass
-    try:
-        payload2={"chat_id":chat_id,"text":text,"disable_web_page_preview":True}
-        if kb: payload2["reply_markup"]=kb
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json=payload2,timeout=10)
-        return True
-    except: return False
-
-def edit_message_fast(chat_id, msg_id, text, kb=None):
-    try:
-        kb_fancy=None
-        if kb and "inline_keyboard" in kb:
-            kb_fancy=copy.deepcopy(kb)
-            for row in kb_fancy["inline_keyboard"]:
-                for btn in row:
-                    if "text" in btn and "url" not in btn: btn["text"]=F(btn["text"])
-        payload={"chat_id":chat_id,"message_id":msg_id,"text":F(text),"parse_mode":"HTML","disable_web_page_preview":True}
-        if kb_fancy: payload["reply_markup"]=kb_fancy
-        r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json=payload,timeout=10)
-        if r.status_code==200: return True
-    except: pass
-    try:
-        payload2={"chat_id":chat_id,"message_id":msg_id,"text":text,"disable_web_page_preview":True}
-        if kb: payload2["reply_markup"]=kb
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",json=payload2,timeout=10)
-        return True
-    except: return False
-
-def report_error(chat_id, where, error):
-    err_str=str(error)
-    if "ReadTimeout" in err_str or "Timeout" in err_str or "timed out" in err_str: return
-    print(f"[ERROR in {where}] {error}\n{traceback.format_exc()}")
-    db=get_db()
-    if db:
-        try:
-            cur=db.cursor()
-            cur.execute("INSERT INTO error_logs (created_at, where_at, message) VALUES (%s,%s,%s)",(datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S"),where,err_str[:500]))
-            db.commit(); cur.close(); db.close()
-        except: pass
-
-def get_welcome_text(user): return f"Hi !\n{SEP}\nPublish to @menfessangel\nTap Post!\n\nKuota\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5"
-def get_back_keyboard(): return {"inline_keyboard": [[{"text": "Back", "callback_data": "back_home"}]]}
-def get_main_keyboard(is_ad=False):
-    kb={"inline_keyboard": [[{"text": "👤 My Profile", "callback_data": "my_profile"}, {"text": "💌 Post", "callback_data": "post"}], [{"text": "📧 Threads Setting", "callback_data": "threads"}], [{"text": "📈 Stats", "callback_data": "stats"}, {"text": "ℹ️ Info Bot", "callback_data": "info_bot"}]]}
-    if is_ad: kb["inline_keyboard"].append([{"text": "ADMIN PANEL", "callback_data": "admin_panel"}])
-    return kb
-def get_menu_1():
-    return {"inline_keyboard": [
-        [{"text": "🔔 Tag", "callback_data": "lend_tag"}],
-        [{"text": "📥 Mode Persetujuan", "callback_data": "lend_persetujuan"}],
-        [{"text": "🗑️ Menghapus Pesan", "callback_data": "lend_hapus"}],
-        [{"text": "🇮🇩 Lang", "callback_data": "lend_lang"}, {"text": "✅ Tutup", "callback_data": "close"}],
-        [{"text": "▶️ Lainnya", "callback_data": "lend_page2"}],
-        [{"text": "⚙️ System Tools", "callback_data": "admin_system"}]
-    ]}
-def get_menu_2():
-    return {"inline_keyboard": [
-        [{"text": "📜 Peraturan", "callback_data": "lend_peraturan"}],
-        [{"text": "⚠️ Peringatan", "callback_data": "lend_peringatan"}],
-        [{"text": "🚫 Daftar Hitam", "callback_data": "lend_blacklist"}],
-        [{"text": "🔐 Perizinan", "callback_data": "lend_izin"}, {"text": "📋 Log Saluran", "callback_data": "lend_log"}],
-        [{"text": "🎯 Manajemen Channel", "callback_data": "lend_channel"}],
-        [{"text": "⬅️ Kembali", "callback_data": "lend_page1"}, {"text": "❌ Tutup", "callback_data": "close"}]
-    ]}
-def get_system_menu():
-    return {"inline_keyboard": [
-        [{"text": "👥 List Users", "callback_data": "admin_users_0"}, {"text": "📊 DB Stats", "callback_data": "admin_db_stats"}],
-        [{"text": "🔗 Set Webhook", "callback_data": "admin_set_webhook"}],
-        [{"text": "📡 Webhook Info", "callback_data": "admin_webhook_info"}],
-        [{"text": "🗑️ Delete Webhook", "callback_data": "admin_del_webhook"}],
-        [{"text": "📋 Error Log", "callback_data": "admin_error_log"}],
-        [{"text": "⬅️ Kembali", "callback_data": "lend_page1"}, {"text": "❌ Tutup", "callback_data": "close"}]
-    ]}
-def get_channel_target_keyboard(user):
-    target=user.get("admin_target","both")
-    return {"inline_keyboard": [
-        [{"text": f"📍 Target: {target.upper()}", "callback_data": "admin_noop"}],
-        [{"text": f"{'✅ ' if target=='channel' else ''}📢 Channel Only", "callback_data": "admin_set_channel"}, {"text": f"{'✅ ' if target=='threads' else ''}🧵 Threads Only", "callback_data": "admin_set_threads"}],
-        [{"text": f"{'✅ ' if target=='both' else ''}🚀 Both (Channel+Threads)", "callback_data": "admin_set_both"}],
-        [{"text": "⬅️ Kembali", "callback_data": "lend_page2"}]
-    ]}
-
-# --- USER LIST ---
-def get_user_list_text(page=0):
-    db=get_db()
-    if not db: return "DB tidak konek", get_system_menu()
-    try:
-        cur=db.cursor(); per=8
-        cur.execute("SELECT COUNT(*) FROM menfess_users"); total=cur.fetchone()[0]
-        cur.execute("SELECT user_id, name, username, today_text, today_media, banned, total_text, total_media, warn FROM menfess_users ORDER BY total_text+total_media DESC LIMIT %s OFFSET %s",(per, page*per))
-        rows=cur.fetchall(); cur.close(); db.close()
-        pages = (total+per-1)//per if total>0 else 1
-        txt=f"👥 List User (Page {page+1}/{pages})\n{SEP}\nTotal: {total} user\n\n"
-        kb=[]
-        for r in rows:
-            uid,name,uname,tt,tm,banned,tot_t,tot_m,warn = r
-            status="🚫" if banned else "✅"
-            short=name[:12] if name else uid[:6]
-            txt+=f"{status} {short} | @{uname or '-'} | {tt+tm}/10 | T:{tot_t} M:{tot_m} W:{warn}\n"
-            kb.append([{"text": f"{status} {short} - {tot_t+tot_m} post", "callback_data": f"admin_view_{uid}"}])
-        nav=[]
-        if page>0: nav.append({"text": "⬅️ Prev", "callback_data": f"admin_users_{page-1}"})
-        if page+1<pages: nav.append({"text": "Next ➡️", "callback_data": f"admin_users_{page+1}"})
-        if nav: kb.append(nav)
-        kb.append([{"text": "🚫 Banned Only", "callback_data": "admin_banned_list"}])
-        kb.append([{"text": "⬅️ Kembali", "callback_data": "admin_system"}, {"text": "❌ Tutup", "callback_data": "close"}])
-        return txt, {"inline_keyboard": kb}
-    except Exception as e: return f"Error: {e}", get_system_menu()
-
-def get_user_detail(uid):
-    db=get_db()
-    if not db: return "DB error", get_system_menu()
-    try:
-        cur=db.cursor()
-        cur.execute("SELECT user_id, name, username, today_text, today_media, banned, total_text, total_media, total_chars, last_date, warn, admin_target FROM menfess_users WHERE user_id=%s",(uid,))
-        r=cur.fetchone(); cur.close(); db.close()
-        if not r: return "User not found", get_system_menu()
-        uid,name,uname,tt,tm,banned,tot_t,tot_m,chars,last,warn,target = r
-        txt=f"👤 Detail User\n{SEP}\nID: {uid}\nName: {name}\nUser: @{uname or '-'}\nLast: {last}\nStatus: {'🚫 BANNED' if banned else '✅ Active'}\nWarn: {warn}/3\nToday: Text {tt}/5 Media {tm}/5\nTotal: Text {tot_t} Media {tot_m}\nChars: {chars}\nTarget: {target}"
-        kb={"inline_keyboard": [
-            [{"text": "🚫 Ban" if not banned else "✅ Unban", "callback_data": f"admin_toggleban_{uid}"}, {"text": "⚠️ Warn +1", "callback_data": f"admin_warn_{uid}"}],
-            [{"text": "🔄 Reset Kuota", "callback_data": f"admin_reset_{uid}"}, {"text": "🗑️ Delete User", "callback_data": f"admin_deluser_{uid}"}],
-            [{"text": "⬅️ List", "callback_data": "admin_users_0"}, {"text": "❌ Tutup", "callback_data": "close"}]
-        ]}
-        return txt, kb
-    except Exception as e: return f"Error: {e}", get_system_menu()
-
-def find_logo():
-    for p in ["logo.png","../logo.png",os.path.join(os.path.dirname(__file__),"../logo.png"),os.path.join(os.path.dirname(__file__),"logo.png")]:
-        if os.path.exists(p): return p
-    return None
-def download_file(file_id):
-    try:
-        info=requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile",params={"file_id":file_id},timeout=5).json()
-        fp=info["result"]["file_path"]
-        return requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}",timeout=8).content
-    except: return None
-def add_watermark(photo_bytes):
-    try:
-        lp=find_logo()
-        if not lp: return None
-        base=Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
-        logo=Image.open(lp).convert("RGBA")
-        w,h=base.size; sz=int(w*0.13); logo=logo.resize((sz,sz),Image.LANCZOS)
-        overlay=Image.new("RGBA",base.size,(0,0,0,0)); overlay.paste(logo,(12,12),logo)
-        combined=Image.alpha_composite(base,overlay).convert("RGB")
-        bio=io.BytesIO(); combined.save(bio,"JPEG",quality=85); bio.seek(0); return bio
-    except: return None
-def get_font(size,bold=False):
-    try:
-        p="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-        if os.path.exists(p): return ImageFont.truetype(p,size)
-    except: pass
-    return ImageFont.load_default()
-def make_today_chart(user):
-    try:
-        W,H=720,400; img=Image.new('RGB',(W,H),'#0D0D0F'); draw=ImageDraw.Draw(img)
-        f_title=get_font(22,True); f_small=get_font(14)
-        draw.rectangle([0,0,W,60],fill='#161618')
-        draw.text((20,12),f"TODAY 1D - {user['name'][:16]}",fill='white',font=f_title)
-        hours=["08:00","12:00","16:00","20:00"]; total=user['today_text']+user['today_media']
-        highs=[0]*4 if total==0 else [random.randint(0,2)+(total//4) for _ in hours]
-        max_val=max(highs) if max(highs)>0 else 3
-        slot_w=(700-50)//len(hours)
-        for idx in range(len(hours)):
-            xc=50+idx*slot_w+slot_w//2; v=highs[idx]
-            yh=370-int(v/max_val*250) if max_val>0 else 370
-            color='#10B981' if idx%2==0 else '#EF4444'
-            if total==0: color='#27272A'
-            draw.rectangle([xc-15,yh,xc+15,370],fill=color)
-            draw.text((xc-15,378),hours[idx],fill='#A1A1AA',font=f_small)
-        bio=io.BytesIO(); img.save(bio,format='JPEG',quality=70); bio.seek(0); return bio
-    except: return None
-def make_weekly_chart(user):
-    try:
-        W,H=720,400; img=Image.new('RGB',(W,H),'#0D0D0F'); draw=ImageDraw.Draw(img)
-        f_title=get_font(22,True); f_small=get_font(14)
-        draw.rectangle([0,0,W,60],fill='#161618')
-        draw.text((20,12),"WEEKLY 7D",fill='white',font=f_title)
-        days=["22","23","24","25","26","27","28"]; vals=[random.randint(1,4) for _ in days]; max_v=max(vals)
-        slot_w=(700-50)//len(days)
-        for idx in range(len(days)):
-            xc=50+idx*slot_w+slot_w//2; v=vals[idx]
-            yv=370-int(v/max_v*250); draw.rectangle([xc-14,yv,xc+14,370],fill='#3B82F6')
-            draw.text((xc-8,378),days[idx],fill='#A1A1AA',font=f_small)
-        bio=io.BytesIO(); img.save(bio,format='JPEG',quality=70); bio.seek(0); return bio
-    except: return None
-def send_stats(chat_id,user,mode="today"):
-    try:
-        kb={"inline_keyboard": [[{"text":"TODAY 1D" if mode!="today" else "• TODAY 1D","callback_data":"stats_today"},{"text":"WEEKLY 7D" if mode!="weekly" else "• WEEKLY 7D","callback_data":"stats_weekly"}],[{"text":"Back","callback_data":"back_home"}]]}
-        if mode=="today": chart=make_today_chart(user); cap=f"📊 TODAY 1D - {user['name']}\n{user['today_text']} text | {user['today_media']} media"
-        else: chart=make_weekly_chart(user); cap=f"📈 WEEKLY 7D - {user['name']}\nLast 7 days"
-        if chart:
-            chart.seek(0)
-            try:
-                r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",data={"chat_id":chat_id,"caption":cap},files={"photo":("s.jpg",chart,"image/jpeg")},timeout=30).json()
-                if r.get("ok"):
-                    send_message(chat_id,"Switch mode:",kb)
-                    return
-            except: pass
-        send_message(chat_id,cap,kb)
-    except: pass
-def post_to_threads(text_content):
-    try:
-        if not THREADS_USER_ID or not THREADS_TOKEN: return False
-        data={"media_type":"TEXT","text":text_content[:450],"access_token":THREADS_TOKEN}
-        if MAIN_THREAD_ID: data["reply_to_id"]=MAIN_THREAD_ID
-        r=requests.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads",data=data,timeout=10).json()
-        cid=r.get("id")
-        if not cid: return False
-        r2=requests.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish",data={"creation_id":cid,"access_token":THREADS_TOKEN},timeout=10).json()
-        return "id" in r2
-    except: return False
-def get_webhook_info():
-    try:
-        r=requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo",timeout=5).json()
-        return r.get("result",{})
-    except: return {}
-def set_webhook_auto():
-    try:
-        r=requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",params={"url":WEBHOOK_URL},timeout=8).json()
-        return r
-    except Exception as e: return {"ok":False,"error":str(e)}
-def send_success(chat_id,user,ch_msg_id,target="both"):
-    try:
-        url=f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_msg_id}" if ch_msg_id else f"https://t.me/{CHANNEL_ID.replace('@','')}"
-        buttons=[]
-        if target in ["threads","both"] and (user.get("threads_on") or is_admin(chat_id)): buttons.append([{"text": "See on Threads", "url": THREADS_URL}])
-        if target in ["channel","both"] and ch_msg_id: buttons.append([{"text": "See on channel", "url": url}])
-        if ch_msg_id: buttons.append([{"text": "Delete", "callback_data": f"del_{ch_msg_id}"}])
-        buttons.append([{"text": "Back", "callback_data": "back_home"}])
-        note=f" -> {target.upper()}" if is_admin(chat_id) else ""
-        send_message(chat_id,f"Menfess sent!{note}\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5",{"inline_keyboard": buttons})
-    except Exception as e: report_error(chat_id,"send_success",e)
-
-@app.route("/", methods=["GET","POST"])
-@app.route("/api/index", methods=["GET","POST"])
-def main_handler():
-    data={}; where="init"
-    try:
-        where="init_db"; init_db()
-        if request.method=="GET": return "JogjaLend Bot V110.4 LIST USERS OK",200
-        where="parse_json"; data=request.get_json(force=True,silent=True) or {}
-        if "message" in data:
-            msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id)
-            where=f"get_user {uid}"; user=get_user(uid); text=msg.get("text",""); caption=msg.get("caption","")
-            if "from" in msg:
-                where="parse_from"
-                raw=(msg["from"].get("first_name","")+" "+(msg["from"].get("last_name","") or "")).strip() or "-"
-                user["name"]=raw.encode('ascii','ignore').decode('ascii') or "User"
-                user["username"]=msg["from"].get("username","")
-            where=f"cmd {text[:20]}"
-            if text.startswith("/start"): 
-                where="/start"; user["last_date"]=datetime.now(WIB).strftime("%Y-%m-%d"); save_user_to_db(uid,user)
-                send_message(chat_id,get_welcome_text(user),get_main_keyboard(is_admin(chat_id)))
-            elif text.startswith("/newpost"): send_message(chat_id,f"Post Menfess\n{SEP}\nKetik langsung text / kirim media + caption\nAuto tag {HASHTAG}",get_back_keyboard())
-            elif text.startswith("/profile"): send_message(chat_id,f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5",get_back_keyboard())
-            elif text.lower().startswith("/stats"): send_stats(chat_id,user,"today")
-            elif not user["banned"]:
-                where="handle_text_post"
-                if text and not text.startswith("/") and len(text)>=3:
-                    if user["today_text"]>=5: send_message(chat_id,f"Limit 5/5\n{SEP}\nReset 00:00 WIB",get_back_keyboard())
-                    else:
-                        clean=text.strip()
-                        if HASHTAG.lower() not in clean.lower(): clean=f"{clean} {HASHTAG}"
-                        target=user.get("admin_target","both") if is_admin(chat_id) else ("both" if user.get("threads_on") else "channel")
-                        ch_id=None
-                        if target in ["channel","both"]:
-                            r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json={"chat_id":CHANNEL_ID,"text":clean,"parse_mode":"HTML"},timeout=5).json()
-                            ch_id=r.get("result",{}).get("message_id")
-                        if target in ["threads","both"]: post_to_threads(clean)
-                        user["today_text"]+=1; user["total_text"]+=1; user["total_chars"]=user.get("total_chars",0)+len(text)
-                        save_user_to_db(uid,user); send_success(chat_id,user,ch_id,target)
-                where="handle_media_post"
-                if "photo" in msg or "video" in msg:
-                    if user["today_media"]>=5: send_message(chat_id,f"Limit 5/5",get_back_keyboard())
-                    else:
-                        fid=msg["photo"][-1]["file_id"] if "photo" in msg else msg.get("video",{}).get("file_id")
-                        is_photo="photo" in msg
-                        base_cap=caption.strip() if caption else HASHTAG
-                        if HASHTAG.lower() not in base_cap.lower(): base_cap=f"{base_cap} {HASHTAG}"
-                        target=user.get("admin_target","both") if is_admin(chat_id) else ("both" if user.get("threads_on") else "channel")
-                        ch_id=None
-                        if target in ["channel","both"]:
-                            if is_photo:
-                                raw=download_file(fid); wm=add_watermark(raw) if raw else None
-                                if wm: r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",data={"chat_id":CHANNEL_ID,"caption":base_cap,"parse_mode":"HTML"},files={"photo":("wm.jpg",wm,"image/jpeg")},timeout=15).json(); ch_id=r.get("result",{}).get("message_id")
-                                else: r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",json={"chat_id":CHANNEL_ID,"photo":fid,"caption":base_cap,"parse_mode":"HTML"},timeout=5).json(); ch_id=r.get("result",{}).get("message_id")
-                            else: r=requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo",json={"chat_id":CHANNEL_ID,"video":fid,"caption":base_cap,"parse_mode":"HTML"},timeout=8).json(); ch_id=r.get("result",{}).get("message_id")
-                        if target in ["threads","both"]: post_to_threads(base_cap)
-                        user["today_media"]+=1; user["total_media"]+=1
-                        save_user_to_db(uid,user); send_success(chat_id,user,ch_id,target)
-        if "callback_query" in data:
-            cq=data["callback_query"]; chat_id=cq["message"]["chat"]["id"]; uid=str(chat_id); cdata=cq["data"]; msg_id=cq["message"]["message_id"]
-            where=f"callback {cdata}"
-            try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",json={"callback_query_id":cq["id"]},timeout=2)
-            except: pass
-            time.sleep(0.3)
-            user=get_user(uid)
-            if cdata in ["stats","stats_today","stats_weekly"]:
-                try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",json={"chat_id":chat_id,"message_id":msg_id},timeout=2)
-                except: pass
-                mode = "weekly" if cdata=="stats_weekly" else "today"
-                send_stats(chat_id,user,mode)
-            elif cdata=="back_home": edit_message_fast(chat_id,msg_id,get_welcome_text(user),get_main_keyboard(is_admin(chat_id)))
-            elif cdata=="lend_page1": edit_message_fast(chat_id,msg_id,"⚙️ Pilih salah satu pengaturan yang ingin anda ubah.",get_menu_1())
-            elif cdata=="lend_page2": edit_message_fast(chat_id,msg_id,"⚙️ Pilih salah satu pengaturan yang ingin anda ubah.",get_menu_2())
-            elif cdata=="my_profile": edit_message_fast(chat_id,msg_id,f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5",get_back_keyboard())
-            elif cdata=="post": edit_message_fast(chat_id,msg_id,f"Post Menfess\n{SEP}\nKetik langsung text / kirim media + caption\nAuto tag {HASHTAG}",get_back_keyboard())
-            elif cdata=="threads":
-                kb={"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
-                edit_message_fast(chat_id,msg_id,f"Threads Setting\n{SEP}\nStatus: {'ON' if user.get('threads_on') else 'OFF'}\nLink: threads.net/jogjalend",kb)
-            elif cdata=="threads_toggle":
-                user["threads_on"]=not user.get("threads_on",False); save_user_to_db(uid,user)
-                kb={"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
-                edit_message_fast(chat_id,msg_id,f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend",kb)
-            elif cdata=="info_bot":
-                edit_message_fast(chat_id, msg_id, f"🔧 Bantuan\n\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis ke @joglendsupportBot.\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.", get_back_keyboard())
-            elif cdata=="admin_panel": 
-                if is_admin(chat_id): edit_message_fast(chat_id,msg_id,"⚙️ Pilih salah satu pengaturan yang ingin anda ubah.",get_menu_1())
-            elif cdata=="admin_system":
-                if is_admin(chat_id): edit_message_fast(chat_id,msg_id,f"⚙️ System Tools\n{SEP}\nWebhook: {WEBHOOK_URL}\nKelola bot tanpa buka Vercel", get_system_menu())
-            elif cdata=="admin_set_webhook":
-                if is_admin(chat_id):
-                    res=set_webhook_auto(); edit_message_fast(chat_id,msg_id,f"🔗 Set Webhook\n{SEP}\nURL: {WEBHOOK_URL}\nResult: {res}", get_system_menu())
-            elif cdata=="admin_webhook_info":
-                if is_admin(chat_id):
-                    info=get_webhook_info()
-                    txt=f"📡 Webhook Info\n{SEP}\nURL: {info.get('url','-')}\nPending: {info.get('pending_update_count',0)}\nLast Error: {info.get('last_error_message','-')}"
-                    edit_message_fast(chat_id,msg_id,txt, get_system_menu())
-            elif cdata=="admin_del_webhook":
-                if is_admin(chat_id):
-                    try: requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook",params={"drop_pending_updates":True},timeout=5)
-                    except: pass
-                    edit_message_fast(chat_id,msg_id,f"🗑️ Webhook Deleted\n{SEP}\nPending cleared", get_system_menu())
-            elif cdata=="admin_error_log":
-                if is_admin(chat_id):
-                    db=get_db(); txt="No logs"
-                    if db:
-                        try:
-                            cur=db.cursor(); cur.execute("SELECT created_at, where_at, message FROM error_logs ORDER BY id DESC LIMIT 5"); rows=cur.fetchall()
-                            txt="\n\n".join([f"{r[0]} | {r[1]}: {r[2][:100]}" for r in rows]) if rows else "No error yet ✅"; cur.close(); db.close()
-                        except Exception as e: txt=f"DB Error: {e}"
-                    edit_message_fast(chat_id,msg_id,f"📋 Error Log (5 terbaru)\n{SEP}\n{txt}", get_system_menu())
-            elif cdata=="admin_db_stats":
-                if is_admin(chat_id):
-                    db=get_db(); txt="No DB"
-                    if db:
-                        try:
-                            cur=db.cursor(); cur.execute("SELECT COUNT(*), SUM(total_text), SUM(total_media) FROM menfess_users"); r=cur.fetchone()
-                            txt=f"Users: {r[0]}\nTotal Text: {r[1] or 0}\nTotal Media: {r[2] or 0}\nDB: {DATABASE_URL[:30]}..."; cur.close(); db.close()
-                        except Exception as e: txt=f"Error: {e}"
-                    edit_message_fast(chat_id,msg_id,f"📊 DB Stats\n{SEP}\n{txt}", get_system_menu())
-            # --- NEW USER LIST CALLBACKS ---
-            elif cdata.startswith("admin_users_"):
-                if is_admin(chat_id):
-                    page=int(cdata.split("_")[-1]); txt,kb=get_user_list_text(page); edit_message_fast(chat_id,msg_id,txt,kb)
-            elif cdata=="admin_banned_list":
-                if is_admin(chat_id):
-                    db=get_db(); txt=f"🚫 Banned Users\n{SEP}\n"; kb=[]
-                    if db:
-                        cur=db.cursor(); cur.execute("SELECT user_id, name FROM menfess_users WHERE banned=true LIMIT 10"); rows=cur.fetchall(); cur.close(); db.close()
-                        for uid2,name in rows: txt+=f"{name} - {uid2}\n"; kb.append([{"text": f"Unban {name[:10]}", "callback_data": f"admin_toggleban_{uid2}"}])
-                    kb.append([{"text": "⬅️ Kembali", "callback_data": "admin_users_0"}])
-                    edit_message_fast(chat_id,msg_id,txt or "No banned user", {"inline_keyboard": kb})
-            elif cdata.startswith("admin_view_"):
-                if is_admin(chat_id):
-                    uid2=cdata.replace("admin_view_",""); txt,kb=get_user_detail(uid2); edit_message_fast(chat_id,msg_id,txt,kb)
-            elif cdata.startswith("admin_toggleban_"):
-                if is_admin(chat_id):
-                    uid2=cdata.replace("admin_toggleban_",""); db=get_db()
-                    if db:
-                        cur=db.cursor(); cur.execute("UPDATE menfess_users SET banned = NOT banned WHERE user_id=%s",(uid2,)); db.commit(); cur.close(); db.close(); USERS.pop(uid2,None)
-                    txt,kb=get_user_detail(uid2); edit_message_fast(chat_id,msg_id,txt,kb)
-            elif cdata.startswith("admin_warn_"):
-                if is_admin(chat_id):
-                    uid2=cdata.replace("admin_warn_",""); db=get_db()
-                    if db: cur=db.cursor(); cur.execute("UPDATE menfess_users SET warn = COALESCE(warn,0)+1 WHERE user_id=%s RETURNING warn",(uid2,)); w=cur.fetchone(); db.commit(); cur.close(); db.close(); USERS.pop(uid2,None)
-                    txt,kb=get_user_detail(uid2); edit_message_fast(chat_id,msg_id,txt,kb)
-            elif cdata.startswith("admin_reset_"):
-                if is_admin(chat_id):
-                    uid2=cdata.replace("admin_reset_",""); db=get_db()
-                    if db: cur=db.cursor(); cur.execute("UPDATE menfess_users SET today_text=0, today_media=0 WHERE user_id=%s",(uid2,)); db.commit(); cur.close(); db.close(); USERS.pop(uid2,None)
-                    txt,kb=get_user_detail(uid2); edit_message_fast(chat_id,msg_id,txt,kb)
-            elif cdata.startswith("admin_deluser_"):
-                if is_admin(chat_id):
-                    uid2=cdata.replace("admin_deluser_",""); db=get_db()
-                    if db: cur=db.cursor(); cur.execute("DELETE FROM menfess_users WHERE user_id=%s",(uid2,)); db.commit(); cur.close(); db.close(); USERS.pop(uid2,None)
-                    txt,kb=get_user_list_text(0); edit_message_fast(chat_id,msg_id,txt,kb)
-            # --- END NEW ---
-            elif cdata=="lend_tag": edit_message_fast(chat_id,msg_id,f"🔔 Tag\n{SEP}\nAtur hashtag otomatis, saat ini: {HASHTAG}",get_menu_1())
-            elif cdata=="lend_peraturan": edit_message_fast(chat_id,msg_id,f"📜 Peraturan\n{SEP}\n/setperaturan <teks>",get_menu_2())
-            elif cdata=="lend_peringatan": edit_message_fast(chat_id,msg_id,f"⚠️ Peringatan\n{SEP}\n/warn 3x auto ban",get_menu_2())
-            elif cdata=="lend_blacklist": edit_message_fast(chat_id,msg_id,f"🚫 Daftar Hitam\n{SEP}\n/ban /unban",get_menu_2())
-            elif cdata=="lend_persetujuan": edit_message_fast(chat_id,msg_id,f"📥 Mode Persetujuan\n{SEP}\nON = masuk log dulu",get_menu_1())
-            elif cdata=="lend_hapus": edit_message_fast(chat_id,msg_id,f"🗑️ Menghapus Pesan\n{SEP}\n/del reply",get_menu_1())
-            elif cdata=="lend_izin": edit_message_fast(chat_id,msg_id,f"🔐 Perizinan\n{SEP}\nAtur siapa boleh post media/link",get_menu_2())
-            elif cdata=="lend_log": edit_message_fast(chat_id,msg_id,f"📋 Log Saluran\n{SEP}\nLog ke: {LOG_CHANNEL}",get_menu_2())
-            elif cdata=="lend_lang": edit_message_fast(chat_id,msg_id,f"🇮🇩 Lang\n{SEP}\nBahasa Bot: Indonesia",get_menu_1())
-            elif cdata=="lend_channel": 
-                if is_admin(chat_id): edit_message_fast(chat_id,msg_id,f"🎯 Manajemen Channel\n{SEP}\nCurrent: {user.get('admin_target','both').upper()}", get_channel_target_keyboard(user))
-            elif cdata.startswith("admin_set_"):
-                if is_admin(chat_id):
-                    if cdata=="admin_set_channel": user["admin_target"]="channel"
-                    elif cdata=="admin_set_threads": user["admin_target"]="threads"
-                    elif cdata=="admin_set_both": user["admin_target"]="both"
-                    save_user_to_db(uid,user); edit_message_fast(chat_id,msg_id,f"Set ke {user['admin_target'].upper()}", get_channel_target_keyboard(user))
-            elif cdata=="admin_noop": pass
-            elif cdata=="close":
-                try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",json={"chat_id":chat_id,"message_id":msg_id},timeout=3)
-                except: pass
-            elif cdata.startswith("del_"):
-                mid=cdata.replace("del_","")
-                if mid.isdigit():
-                    try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage",json={"chat_id":CHANNEL_ID,"message_id":int(mid)},timeout=3)
-                    except: pass
-                edit_message_fast(chat_id,msg_id,"Deleted",get_back_keyboard())
-        return "ok",200
+        db = get_db()
+        if not db: return
+        cur = db.cursor()
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS users(
+            user_id BIGINT PRIMARY KEY,
+            username TEXT,
+            first_name TEXT,
+            is_banned BOOLEAN DEFAULT FALSE,
+            warnings INT DEFAULT 0,
+            threads_on BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS posts(
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT,
+            message_id BIGINT,
+            channel_msg_id BIGINT,
+            type TEXT,
+            caption TEXT,
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS quota(
+            user_id BIGINT,
+            date DATE,
+            text_count INT DEFAULT 0,
+            media_count INT DEFAULT 0,
+            PRIMARY KEY(user_id, date)
+        );
+        """)
+        db.commit(); db.close()
     except Exception as e:
-        try:
-            cid=0
-            try:
-                if "message" in data and "chat" in data["message"]: cid=data["message"]["chat"]["id"]
-                elif "callback_query" in data: cid=data["callback_query"]["message"]["chat"]["id"]
-            except: pass
-            if cid!=0: report_error(cid, where, e)
-            else: print(f"[CRITICAL {where}] {e}\n{traceback.format_exc()}")
-        except: print(f"[FATAL {where}] {e}\n{traceback.format_exc()}")
-        return "ok",200
+        print("DB init error", e)
+
+init_db()
+
+def get_user(user_id):
+    try:
+        db=get_db(); cur=db.cursor()
+        cur.execute("SELECT * FROM users WHERE user_id=%s",(user_id,))
+        r=cur.fetchone(); db.close(); return r
+    except: return None
+
+def upsert_user(user):
+    try:
+        db=get_db(); cur=db.cursor()
+        cur.execute("""INSERT INTO users(user_id,username,first_name) VALUES(%s,%s,%s)
+        ON CONFLICT(user_id) DO UPDATE SET username=EXCLUDED.username, first_name=EXCLUDED.first_name""",
+        (user.get("id"), user.get("username",""), user.get("first_name","")))
+        db.commit(); db.close()
+    except Exception as e: print(e)
+
+def get_quota(user_id):
+    today = datetime.date.today()
+    try:
+        db=get_db(); cur=db.cursor()
+        cur.execute("SELECT * FROM quota WHERE user_id=%s AND date=%s",(user_id,today))
+        r=cur.fetchone(); db.close()
+        return r or {"text_count":0,"media_count":0}
+    except: return {"text_count":0,"media_count":0}
+
+def add_quota(user_id, is_media):
+    today = datetime.date.today()
+    try:
+        db=get_db(); cur=db.cursor()
+        cur.execute("""INSERT INTO quota(user_id,date,text_count,media_count) VALUES(%s,%s,%s,%s)
+        ON CONFLICT(user_id,date) DO UPDATE SET text_count=quota.text_count+EXCLUDED.text_count, media_count=quota.media_count+EXCLUDED.media_count""",
+        (user_id,today, 0 if is_media else 1, 1 if is_media else 0))
+        db.commit(); db.close()
+    except Exception as e: print(e)
+
+# ============ TELEGRAM HELPERS ============
+def tg(method, data=None, files=None):
+    try:
+        r = requests.post(f"{API}/{method}", data=data, files=files, timeout=30)
+        return r.json()
+    except Exception as e:
+        print("TG error", e); return {}
+
+def send_message(chat_id, text, reply_markup=None, parse_mode=None):
+    data={"chat_id":chat_id,"text":text}
+    if reply_markup: data["reply_markup"]=json.dumps(reply_markup)
+    if parse_mode: data["parse_mode"]=parse_mode
+    return tg("sendMessage", data)
+
+def edit_message_fast(chat_id, msg_id, text, reply_markup=None, fancy=True):
+    if fancy:
+        # Jangan convert yang ada di dalam `...` dan @username / link
+        parts = re.split(r'(`[^`]+`|@\w+)', text)
+        out=""
+        for p in parts:
+            if p.startswith("`") or p.startswith("@"):
+                out+=p
+            else:
+                out+=F(p)
+        text=out
+    data={"chat_id":chat_id,"message_id":msg_id,"text":text}
+    if reply_markup: data["reply_markup"]=json.dumps(reply_markup)
+    return tg("editMessageText", data)
+
+def delete_message(chat_id, msg_id):
+    tg("deleteMessage",{"chat_id":chat_id,"message_id":msg_id})
+
+# ============ KEYBOARDS ============
+def get_main_keyboard(is_admin=False):
+    kb={"inline_keyboard":[
+        [{"text":"📮 Post","callback_data":"post_menu"}],
+        [{"text":"📊 Stats","callback_data":"stats"},{"text":"ℹ️ Info Bot","callback_data":"info_bot"}],
+        [{"text":"⚙️ Threads Setting","callback_data":"threads_setting"}],
+    ]}
+    if is_admin:
+        kb["inline_keyboard"].append([{"text":"🛠️ System Tools","callback_data":"system_tools"}])
+        kb["inline_keyboard"].append([{"text":"👥 List Users","callback_data":"list_users"}])
+    return kb
+
+def get_back_keyboard():
+    return {"inline_keyboard":[[{"text":"🔙 Back","callback_data":"back_main"}]]}
+
+def get_post_keyboard():
+    return {"inline_keyboard":[
+        [{"text":"📝 Text","callback_data":"post_text"},{"text":"🖼️ Media","callback_data":"post_media"}],
+        [{"text":"🔙 Back","callback_data":"back_main"}]
+    ]}
+
+# ============ WATERMARK ============
+def add_watermark(image_bytes):
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        draw = ImageDraw.Draw(img, "RGBA")
+        w,h = img.size
+        text = f"{HASHTAG} | @jogja_lend"
+        try: font = ImageFont.truetype("arial.ttf", int(w*0.035))
+        except: font = ImageFont.load_default()
+        bbox = draw.textbbox((0,0), text, font=font)
+        tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
+        x, y = w-tw-20, h-th-20
+        draw.rectangle([x-10,y-5,x+tw+10,y+th+5], fill=(0,0,0,120))
+        draw.text((x,y), text, fill=(255,255,255,255), font=font)
+        out = io.BytesIO(); img.save(out, format="JPEG", quality=88)
+        out.seek(0); return out
+    except Exception as e:
+        print("watermark err", e); return io.BytesIO(image_bytes)
+
+# ============ HANDLERS ============
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({"status":"ok","version":BOT_VERSION,"bot":"JogjaLend"})
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    try:
+        update = request.get_json(force=True, silent=True) or {}
+        # Callback
+        if "callback_query" in update:
+            cq = update["callback_query"]
+            chat_id = cq["message"]["chat"]["id"]
+            msg_id = cq["message"]["message_id"]
+            user_id = cq["from"]["id"]
+            cdata = cq.get("data","")
+            upsert_user(cq["from"])
+            tg("answerCallbackQuery",{"callback_query_id":cq["id"]})
+            is_admin = user_id in ADMIN_IDS
+
+            if cdata=="back_main":
+                edit_message_fast(chat_id, msg_id, f"Selamat datang di JogjaLend Bot!\n\nSilahkan pilih menu di bawah.", get_main_keyboard(is_admin))
+
+            elif cdata=="post_menu":
+                edit_message_fast(chat_id, msg_id, "Pilih jenis postingan:", get_post_keyboard())
+
+            elif cdata=="post_text":
+                edit_message_fast(chat_id, msg_id, "Kirim text menfess kamu sekarang.\nKuota: 5 text / hari", get_back_keyboard())
+
+            elif cdata=="post_media":
+                edit_message_fast(chat_id, msg_id, "Kirim foto / video + caption sekarang.\nKuota: 5 media / hari", get_back_keyboard())
+
+            elif cdata=="stats":
+                q = get_quota(user_id)
+                edit_message_fast(chat_id, msg_id, f"Stats Kamu:\nText hari ini: {q['text_count']}/5\nMedia hari ini: {q['media_count']}/5\nThreads: ON\nReset: 00:00 WIB", get_back_keyboard())
+
+            elif cdata=="threads_setting":
+                u = get_user(user_id)
+                cur = u["threads_on"] if u else True
+                try:
+                    db=get_db(); cur2=db.cursor()
+                    cur2.execute("UPDATE users SET threads_on=%s WHERE user_id=%s",(not cur, user_id))
+                    db.commit(); db.close()
+                except: pass
+                edit_message_fast(chat_id, msg_id, f"Threads Setting: {'ON' if not cur else 'OFF'}\nPost kamu akan {'ikut' if not cur else 'tidak'} di-post ke Threads.", get_back_keyboard())
+
+            # ===== INFO BOT - FINAL PAS =====
+            elif cdata=="info_bot":
+                info_text = f"""Bot Information
+
+{F("JogjaLend Bot adalah bot yang dikembangkan oleh tim")} @jogja_lend.
+`Versi Bot : {BOT_VERSION}`
+`Database : {DB_NAME}`
+
+{F("Untuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis ke")} @joglendsupportBot."""
+                edit_message_fast(chat_id, msg_id, info_text, get_back_keyboard(), fancy=False)
+
+            # ===== SYSTEM TOOLS =====
+            elif cdata=="system_tools":
+                if not is_admin:
+                    edit_message_fast(chat_id, msg_id, "Akses ditolak.", get_back_keyboard()); return jsonify({"ok":True})
+                try:
+                    db=get_db(); cur=db.cursor()
+                    cur.execute("SELECT COUNT(*) as c FROM users"); total=cur.fetchone()["c"]
+                    cur.execute("SELECT COUNT(*) as c FROM posts WHERE DATE(created_at)=CURRENT_DATE"); today_posts=cur.fetchone()["c"]
+                    db.close()
+                except: total=0; today_posts=0
+                edit_message_fast(chat_id, msg_id, f"System Tools\n\nTotal Users: {total}\nPost Hari Ini: {today_posts}\nVersi: {BOT_VERSION}\nPython: {PYTHON_VERSION}\nDatabase: {DB_NAME}\nUptime: OK", get_back_keyboard())
+
+            # ===== LIST USERS =====
+            elif cdata=="list_users":
+                if not is_admin:
+                    edit_message_fast(chat_id, msg_id, "Akses ditolak.", get_back_keyboard()); return jsonify({"ok":True})
+                try:
+                    db=get_db(); cur=db.cursor()
+                    cur.execute("SELECT user_id, username, first_name, is_banned FROM users ORDER BY created_at DESC LIMIT 20")
+                    rows=cur.fetchall(); db.close()
+                    txt="List Users (20 terbaru):\n\n"
+                    for r in rows:
+                        txt+=f"- {r['first_name']} @{r['username']} | ID: {r['user_id']} {'[BANNED]' if r['is_banned'] else ''}\n"
+                    edit_message_fast(chat_id, msg_id, txt, get_back_keyboard())
+                except Exception as e:
+                    edit_message_fast(chat_id, msg_id, f"Error: {e}", get_back_keyboard())
+
+            return jsonify({"ok":True})
+
+        # Message
+        if "message" in update:
+            msg = update["message"]
+            chat_id = msg["chat"]["id"]
+            user_id = msg["from"]["id"]
+            text = msg.get("text","")
+            upsert_user(msg["from"])
+            is_admin = user_id in ADMIN_IDS
+            u = get_user(user_id)
+            if u and u["is_banned"]:
+                send_message(chat_id, "Kamu di-banned."); return jsonify({"ok":True})
+
+            if text.startswith("/start"):
+                send_message(chat_id, "Selamat datang di JogjaLend Bot!\n\nSilahkan pilih menu di bawah.", get_main_keyboard(is_admin))
+                return jsonify({"ok":True})
+
+            if text.startswith("/info"):
+                info_text = f"""Bot Information
+
+{F("JogjaLend Bot adalah bot yang dikembangkan oleh tim")} @jogja_lend.
+`Versi Bot : {BOT_VERSION}`
+`Database : {DB_NAME}`
+
+{F("Untuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis ke")} @joglendsupportBot."""
+                send_message(chat_id, info_text)
+                return jsonify({"ok":True})
+
+            # Post Text
+            if text and not text.startswith("/"):
+                q = get_quota(user_id)
+                if q["text_count"] >= 5:
+                    send_message(chat_id, "Kuota text habis! Coba lagi besok 00:00 WIB")
+                    return jsonify({"ok":True})
+                caption = f"{text}\n\n{HASHTAG}\nvia @jogja_lend"
+                r = tg("sendMessage",{"chat_id":CHANNEL_ID,"text":caption})
+                if r.get("ok"):
+                    add_quota(user_id, False)
+                    send_message(chat_id, "Menfess sent! ✅", get_main_keyboard(is_admin))
+                else:
+                    send_message(chat_id, "Gagal kirim. Coba lagi.")
+                return jsonify({"ok":True})
+
+            # Post Media
+            if "photo" in msg or "video" in msg:
+                q = get_quota(user_id)
+                if q["media_count"] >= 5:
+                    send_message(chat_id, "Kuota media habis!")
+                    return jsonify({"ok":True})
+                caption = msg.get("caption","") + f"\n\n{HASHTAG}\nvia @jogja_lend"
+                if "photo" in msg:
+                    file_id = msg["photo"][-1]["file_id"]
+                    # get file path
+                    f = tg("getFile",{"file_id":file_id})
+                    if f.get("ok"):
+                        fp = f["result"]["file_path"]
+                        img_bytes = requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}").content
+                        wm = add_watermark(img_bytes)
+                        tg("sendPhoto",{"chat_id":CHANNEL_ID,"caption":caption}, files={"photo":("img.jpg", wm)})
+                elif "video" in msg:
+                    file_id = msg["video"]["file_id"]
+                    tg("sendVideo",{"chat_id":CHANNEL_ID,"video":file_id,"caption":caption})
+                add_quota(user_id, True)
+                send_message(chat_id, "Menfess media sent! ✅", get_main_keyboard(is_admin))
+                return jsonify({"ok":True})
+
+        return jsonify({"ok":True})
+    except Exception as e:
+        print(traceback.format_exc())
+        return jsonify({"ok":False,"error":str(e)})
+
+if __name__=="__main__":
+    app.run(debug=True)
