@@ -14,6 +14,7 @@ THREADS_USER_ID = os.getenv("THREADS_USER_ID")
 THREADS_TOKEN = os.getenv("THREADS_TOKEN")
 MAIN_THREAD_ID = os.getenv("MAIN_THREAD_ID")
 LOG_CHANNEL = os.getenv("LOG_CHANNEL") or CHANNEL_ID
+WEBHOOK_URL = os.getenv("WEBHOOK_URL") or "https://jogja-lend.vercel.app/api/index"
 WIB = timezone(timedelta(hours=7))
 SEP = "●-----------------------------------------------------●"
 HASHTAG = "#jogjalend"
@@ -54,8 +55,10 @@ def init_db():
         except: pass
         try: cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS warn INT DEFAULT 0")
         except: pass
+        cur.execute("CREATE TABLE IF NOT EXISTS error_logs (id SERIAL PRIMARY KEY, created_at TEXT, where_at TEXT, message TEXT)")
         db.commit(); cur.close(); db.close()
     except: pass
+
 def load_user_from_db(uid):
     db=get_db()
     if not db: return None
@@ -66,6 +69,7 @@ def load_user_from_db(uid):
         if row: return {"name":row[0] or "", "username":row[1] or "", "threads_on":row[2] or False, "today_text":row[3] or 0, "today_media":row[4] or 0, "last_date":row[5] or "", "banned":row[6] or False, "total_text":row[7] or 0, "total_media":row[8] or 0, "total_chars":row[9] or 0, "admin_target":row[10] or "both", "warn":row[11] or 0}
     except: return None
     return None
+
 def save_user_to_db(uid,user):
     db=get_db()
     if not db: return
@@ -74,6 +78,7 @@ def save_user_to_db(uid,user):
         cur.execute("INSERT INTO menfess_users (user_id, name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target, warn) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (user_id) DO UPDATE SET name=%s, username=%s, threads_on=%s, today_text=%s, today_media=%s, last_date=%s, banned=%s, total_text=%s, total_media=%s, total_chars=%s, admin_target=%s, warn=%s",(uid,user["name"],user["username"],user["threads_on"],user["today_text"],user["today_media"],user["last_date"],user["banned"],user["total_text"],user["total_media"],user.get("total_chars",0),user.get("admin_target","both"),user.get("warn",0),user["name"],user["username"],user["threads_on"],user["today_text"],user["today_media"],user["last_date"],user["banned"],user["total_text"],user["total_media"],user.get("total_chars",0),user.get("admin_target","both"),user.get("warn",0)))
         db.commit(); cur.close(); db.close()
     except: pass
+
 def get_user(uid):
     u=USERS[uid]
     if u["last_date"]=="" and DATABASE_URL:
@@ -82,6 +87,7 @@ def get_user(uid):
     today=datetime.now(WIB).strftime("%Y-%m-%d")
     if u["last_date"]!=today: u["today_text"]=0; u["today_media"]=0; u["last_date"]=today; save_user_to_db(uid,u)
     return u
+
 def is_admin(uid): return str(uid) in ADMIN_ID.split(",") if ADMIN_ID else False
 
 def send_message(chat_id,text,kb=None):
@@ -128,6 +134,13 @@ def report_error(chat_id, where, error):
     err_str=str(error)
     if "ReadTimeout" in err_str or "Timeout" in err_str or "timed out" in err_str: return
     print(f"[ERROR in {where}] {error}\n{traceback.format_exc()}")
+    db=get_db()
+    if db:
+        try:
+            cur=db.cursor()
+            cur.execute("INSERT INTO error_logs (created_at, where_at, message) VALUES (%s,%s,%s)",(datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S"),where,err_str[:500]))
+            db.commit(); cur.close(); db.close()
+        except: pass
 
 def get_welcome_text(user): return f"Hi !\n{SEP}\nPublish to @menfessangel\nTap Post!\n\nKuota\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5"
 def get_back_keyboard(): return {"inline_keyboard": [[{"text": "Back", "callback_data": "back_home"}]]}
@@ -141,7 +154,8 @@ def get_menu_1():
         [{"text": "📥 Mode Persetujuan", "callback_data": "lend_persetujuan"}],
         [{"text": "🗑️ Menghapus Pesan", "callback_data": "lend_hapus"}],
         [{"text": "🇮🇩 Lang", "callback_data": "lend_lang"}, {"text": "✅ Tutup", "callback_data": "close"}],
-        [{"text": "▶️ Lainnya", "callback_data": "lend_page2"}]
+        [{"text": "▶️ Lainnya", "callback_data": "lend_page2"}],
+        [{"text": "⚙️ System Tools", "callback_data": "admin_system"}]
     ]}
 def get_menu_2():
     return {"inline_keyboard": [
@@ -150,6 +164,15 @@ def get_menu_2():
         [{"text": "🚫 Daftar Hitam", "callback_data": "lend_blacklist"}],
         [{"text": "🔐 Perizinan", "callback_data": "lend_izin"}, {"text": "📋 Log Saluran", "callback_data": "lend_log"}],
         [{"text": "🎯 Manajemen Channel", "callback_data": "lend_channel"}],
+        [{"text": "⬅️ Kembali", "callback_data": "lend_page1"}, {"text": "❌ Tutup", "callback_data": "close"}]
+    ]}
+def get_system_menu():
+    return {"inline_keyboard": [
+        [{"text": "🔗 Set Webhook", "callback_data": "admin_set_webhook"}],
+        [{"text": "📡 Webhook Info", "callback_data": "admin_webhook_info"}],
+        [{"text": "🗑️ Delete Webhook", "callback_data": "admin_del_webhook"}],
+        [{"text": "📋 Error Log", "callback_data": "admin_error_log"}],
+        [{"text": "📊 DB Stats", "callback_data": "admin_db_stats"}],
         [{"text": "⬅️ Kembali", "callback_data": "lend_page1"}, {"text": "❌ Tutup", "callback_data": "close"}]
     ]}
 def get_channel_target_keyboard(user):
@@ -236,6 +259,7 @@ def send_stats(chat_id,user,mode="today"):
             except: pass
         send_message(chat_id,cap,kb)
     except: pass
+
 def post_to_threads(text_content):
     try:
         if not THREADS_USER_ID or not THREADS_TOKEN: return False
@@ -247,6 +271,18 @@ def post_to_threads(text_content):
         r2=requests.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish",data={"creation_id":cid,"access_token":THREADS_TOKEN},timeout=10).json()
         return "id" in r2
     except: return False
+
+def get_webhook_info():
+    try:
+        r=requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo",timeout=5).json()
+        return r.get("result",{})
+    except: return {}
+def set_webhook_auto():
+    try:
+        r=requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",params={"url":WEBHOOK_URL},timeout=8).json()
+        return r
+    except Exception as e: return {"ok":False,"error":str(e)}
+
 def send_success(chat_id,user,ch_msg_id,target="both"):
     try:
         url=f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_msg_id}" if ch_msg_id else f"https://t.me/{CHANNEL_ID.replace('@','')}"
@@ -265,7 +301,7 @@ def main_handler():
     data={}; where="init"
     try:
         where="init_db"; init_db()
-        if request.method=="GET": return "JogjaLend Bot V110.2 EDIT 0.3s OK",200
+        if request.method=="GET": return "JogjaLend Bot V110.3 SYSTEM TOOLS OK",200
         where="parse_json"; data=request.get_json(force=True,silent=True) or {}
         if "message" in data:
             msg=data["message"]; chat_id=msg["chat"]["id"]; uid=str(chat_id)
@@ -347,6 +383,54 @@ def main_handler():
             elif cdata=="admin_panel": 
                 if is_admin(chat_id): edit_message_fast(chat_id,msg_id,"⚙️ Pilih salah satu pengaturan yang ingin anda ubah.",get_menu_1())
                 else: edit_message_fast(chat_id,msg_id,"Not admin",get_back_keyboard())
+            elif cdata=="admin_system":
+                if is_admin(chat_id): edit_message_fast(chat_id,msg_id,f"⚙️ System Tools\n{SEP}\nWebhook: {WEBHOOK_URL}\nKelola bot tanpa buka Vercel", get_system_menu())
+            elif cdata=="admin_set_webhook":
+                if is_admin(chat_id):
+                    res=set_webhook_auto()
+                    edit_message_fast(chat_id,msg_id,f"🔗 Set Webhook\n{SEP}\nURL: {WEBHOOK_URL}\nResult: {res}", get_system_menu())
+            elif cdata=="admin_webhook_info":
+                if is_admin(chat_id):
+                    info=get_webhook_info()
+                    if not info: txt="Gagal ambil info"
+                    else:
+                        err=info.get('last_error_message','-')
+                        cnt=info.get('pending_update_count',0)
+                        url=info.get('url','-')
+                        txt=f"📡 Webhook Info\n{SEP}\nURL: {url}\nPending: {cnt}\nLast Error: {err}\n\nJika Pending > 0, klik Set Webhook lagi"
+                    edit_message_fast(chat_id,msg_id,txt, get_system_menu())
+            elif cdata=="admin_del_webhook":
+                if is_admin(chat_id):
+                    try: requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook",params={"drop_pending_updates":True},timeout=5)
+                    except: pass
+                    edit_message_fast(chat_id,msg_id,f"🗑️ Webhook Deleted\n{SEP}\nPending updates cleared", get_system_menu())
+            elif cdata=="admin_error_log":
+                if is_admin(chat_id):
+                    db=get_db()
+                    txt="No logs"
+                    if db:
+                        try:
+                            cur=db.cursor()
+                            cur.execute("SELECT created_at, where_at, message FROM error_logs ORDER BY id DESC LIMIT 5")
+                            rows=cur.fetchall()
+                            if rows: txt="\n\n".join([f"{r[0]} | {r[1]}: {r[2][:100]}" for r in rows])
+                            else: txt="No error yet ✅"
+                            cur.close(); db.close()
+                        except Exception as e: txt=f"DB Error: {e}"
+                    edit_message_fast(chat_id,msg_id,f"📋 Error Log (5 terbaru)\n{SEP}\n{txt}", get_system_menu())
+            elif cdata=="admin_db_stats":
+                if is_admin(chat_id):
+                    db=get_db()
+                    txt="No DB"
+                    if db:
+                        try:
+                            cur=db.cursor()
+                            cur.execute("SELECT COUNT(*), SUM(total_text), SUM(total_media) FROM menfess_users")
+                            r=cur.fetchone()
+                            txt=f"Users: {r[0]}\nTotal Text: {r[1] or 0}\nTotal Media: {r[2] or 0}\nDB: {DATABASE_URL[:20]}..."
+                            cur.close(); db.close()
+                        except Exception as e: txt=f"Error: {e}"
+                    edit_message_fast(chat_id,msg_id,f"📊 DB Stats\n{SEP}\n{txt}", get_system_menu())
             elif cdata=="lend_tag": edit_message_fast(chat_id,msg_id,f"🔔 Tag\n{SEP}\nAtur hashtag otomatis, saat ini: {HASHTAG}",get_menu_1())
             elif cdata=="lend_peraturan": edit_message_fast(chat_id,msg_id,f"📜 Peraturan\n{SEP}\n/setperaturan <teks> untuk set peraturan",get_menu_2())
             elif cdata=="lend_peringatan": edit_message_fast(chat_id,msg_id,f"⚠️ Peringatan\n{SEP}\n/warn untuk kasih peringatan, 3x auto ban",get_menu_2())
