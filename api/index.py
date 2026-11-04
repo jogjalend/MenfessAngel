@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - CLICKABLE LINK + ANTI 500
+# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - PRE TANPA SPASI ATAS BAWAH + CLICKABLE
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time
 from datetime import datetime, timezone, timedelta
@@ -96,8 +96,6 @@ def to_fancy(text):
     res_parts.append(conv); return "".join(res_parts)
 def F(t): return to_fancy(t)
 def M(t):
-    # Mono per baris, TAPI baris yang ada link / mention / command JANGAN dibungkus <code>
-    # Karena <code> matiin klik di Telegram
     out = []
     for line in t.split("\n"):
         if line.strip() == "":
@@ -532,7 +530,7 @@ def main_handler():
                 kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message_fast(chat_id, msg_id, f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend", kb)
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n\n<pre>Versi Bot : V110.9\nDatabase  : PostgreSQL</pre>\n\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis di @joglendsupportBot", get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n<pre>Versi Bot : V110.9\nDatabase  : PostgreSQL</pre>\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis di @joglendsupportBot", get_back_keyboard())
             elif cdata == "admin_panel":
                 if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V110.9\n------------------------------\nPilih menu admin:"), get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, M("Not admin"), get_back_keyboard())
