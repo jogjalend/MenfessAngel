@@ -76,7 +76,7 @@ def set_setting(k, v):
 def to_fancy(text):
     if not text:
         return ""
-    pattern = r'@\w+|#\w+|/\w+|https?://\S+|threads\.net/\S+|t\.me/\S+'
+    pattern = r'<code>.*?</code>|<[^>]+>|@\w+|#\w+|/\w+|https?://\S+|threads\.net/\S+|t\.me/\S+'
     res_parts = []; last_idx = 0
     for m in re.finditer(pattern, text):
         before = text[last_idx:m.start()]
@@ -327,6 +327,32 @@ def send_success(chat_id, user, ch_msg_id, target="both"):
         send_message(chat_id, f"Menfess sent!{note}\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5", {"inline_keyboard": buttons})
     except Exception as e: report_error(chat_id, "send_success", e)
 
+def send_user_list(chat_id):
+    db = get_db()
+    if not db:
+        send_message(chat_id, "DB belum connect")
+        return
+    try:
+        cur = db.cursor()
+        cur.execute("SELECT user_id, name, username, total_text+total_media as total, banned FROM menfess_users ORDER BY total DESC")
+        rows = cur.fetchall(); cur.close(); db.close()
+        if not rows:
+            send_message(chat_id, "Belum ada user.")
+            return
+        header = f"👥 Total User: {len(rows)}\n{SEP}\nSemua Member:\n"
+        txt = header
+        for i, r in enumerate(rows, 1):
+            status = " 🚫 BANNED" if r[4] else ""
+            display = f"@{r[2]}" if r[2] else "-"
+            line = f"{i}. {display} - {r[0]} ({r[3]}){status}\n"
+            if len(txt) + len(line) > 3500:
+                send_message(chat_id, txt)
+                txt = f"👥 Lanjutan ({i}/{len(rows)}):\n"
+            txt += line
+        send_message(chat_id, txt)
+    except Exception as e:
+        send_message(chat_id, f"Gagal ambil list: {e}")
+
 def handle_admin_command(chat_id, text):
     if text.startswith("/ban"):
         parts = text.split()
@@ -363,14 +389,7 @@ def handle_admin_command(chat_id, text):
                 send_message(chat_id, f"Broadcast terkirim ke {len(rows)} user")
         return True
     if text.startswith("/users"):
-        db = get_db()
-        if db:
-            cur = db.cursor(); cur.execute("SELECT COUNT(*) FROM menfess_users"); c = cur.fetchone()[0]
-            cur.execute("SELECT user_id, name, total_text+total_media as total FROM menfess_users ORDER BY total DESC LIMIT 10")
-            rows = cur.fetchall(); cur.close(); db.close()
-            txt = f"👥 Total User: {c}\n{SEP}\nTop 10:\n"
-            for r in rows: txt += f"{r[1]} - {r[0]} ({r[2]})\n"
-            send_message(chat_id, txt)
+        send_user_list(chat_id)
         return True
     if text.startswith("/setwebhook"):
         host = request.host_url.rstrip('/'); wh = f"{host}/api/index"
@@ -491,7 +510,7 @@ def main_handler():
                 kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message_fast(chat_id, msg_id, f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend", kb)
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n`Versi Bot : V110.5`\n`Database : PostgreSQL (Neon)`\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis di @joglendsupportBot", get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n<code>Versi Bot : V110.5</code>\n<code>Database : PostgreSQL (Neon)</code>\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis di @joglendsupportBot", get_back_keyboard())
             elif cdata == "admin_panel":
                 if is_admin(chat_id): edit_message_fast(chat_id, msg_id, "🔧 ADMIN PANEL V110.5\n"+SEP+"\nPilih menu admin:", get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, "Not admin", get_back_keyboard())
@@ -534,10 +553,8 @@ def main_handler():
             elif cdata == "admin_set_both":
                 if is_admin(chat_id): user["admin_target"] = "both"; save_user_to_db(uid, user); edit_message_fast(chat_id, msg_id, f"Set ke BOTH\n{SEP}\nMenfess ke Channel + Threads", get_channel_target_keyboard(user))
             elif cdata == "admin_users":
-                db = get_db()
-                if db:
-                    cur = db.cursor(); cur.execute("SELECT COUNT(*) FROM menfess_users"); c = cur.fetchone()[0]; cur.close(); db.close()
-                    edit_message_fast(chat_id, msg_id, f"👥 Total User: {c}\nGunakan /users untuk detail", get_admin_panel())
+                send_user_list(chat_id)
+                edit_message_fast(chat_id, msg_id, "👥 List User dikirim di bawah 👇", get_admin_panel())
             elif cdata == "admin_allstats":
                 db = get_db()
                 if db:
