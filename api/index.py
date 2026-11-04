@@ -1,10 +1,9 @@
-# api/index.py - JogjaLend Bot Angel V112 PERFECTED
+# api/index.py - JogjaLend Bot Angel V110.5 FULL
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 
-# Import berat dipisah biar gak 500 kalau gagal
 try:
     import psycopg2
 except:
@@ -28,7 +27,6 @@ WIB = timezone(timedelta(hours=7))
 SEP = "●-----------------------------------------------------●"
 _db_init_done = False
 
-# === SETTINGS DB ===
 def get_db():
     if not DATABASE_URL or not psycopg2:
         return None
@@ -75,7 +73,6 @@ def set_setting(k, v):
     except:
         pass
 
-# === FANCY ===
 def to_fancy(text):
     if not text:
         return ""
@@ -184,7 +181,6 @@ def report_error(chat_id, where, error):
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": LOG_CHANNEL, "text": log_text[:4000]}, timeout=5)
     except: pass
 
-# === UI ===
 def get_welcome_text(user):
     hashtag = get_setting('hashtag', '#jogjalend')
     return f"Hi !\n{SEP}\nPublish to {CHANNEL_ID}\nTap Post!\n\nKuota\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5\nTag: {hashtag}"
@@ -217,7 +213,7 @@ def get_admin_panel():
         [{"text": "📢 Broadcast", "callback_data": "admin_broadcast"}, {"text": "🚫 Ban/Unban", "callback_data": "lend_blacklist"}],
         [{"text": "🎯 Target Channel", "callback_data": "lend_channel"}],
         [{"text": "🔗 Set Webhook", "callback_data": "admin_webhook"}, {"text": "📋 Cek Logs", "callback_data": "admin_logs"}],
-        [{"text": "⚙️ Pengaturan (Screenshot 1 & 2)", "callback_data": "lend_page1"}],
+        [{"text": "⚙️ Pengaturan Bot", "callback_data": "lend_page1"}],
         [{"text": "⬅️ Kembali", "callback_data": "back_home"}]
     ]}
 def get_channel_target_keyboard(user):
@@ -229,7 +225,6 @@ def get_channel_target_keyboard(user):
         [{"text": "⬅️ Kembali", "callback_data": "admin_panel"}]
     ]}
 
-# === MEDIA ===
 def find_logo():
     for p in ["logo.png", "../logo.png", os.path.join(os.path.dirname(__file__), "../logo.png"), os.path.join(os.path.dirname(__file__), "logo.png")]:
         if os.path.exists(p): return p
@@ -332,7 +327,6 @@ def send_success(chat_id, user, ch_msg_id, target="both"):
         send_message(chat_id, f"Menfess sent!{note}\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5", {"inline_keyboard": buttons})
     except Exception as e: report_error(chat_id, "send_success", e)
 
-# === ADMIN COMMAND HANDLER - DIPISAH BIAR GAK ADA CONTINUE ===
 def handle_admin_command(chat_id, text):
     if text.startswith("/ban"):
         parts = text.split()
@@ -418,7 +412,7 @@ def main_handler():
     data = {}; where = "init"
     try:
         where = "init_db"; init_db()
-        if request.method == "GET": return "JogjaLend Bot V112 FULL OK", 200
+        if request.method == "GET": return "JogjaLend Bot V110.5 FULL OK", 200
         where = "parse_json"; data = request.get_json(force=True, silent=True) or {}
         if "message" in data:
             msg = data["message"]; chat_id = msg["chat"]["id"]; uid = str(chat_id)
@@ -430,7 +424,6 @@ def main_handler():
                 user["name"] = raw.encode('ascii', 'ignore').decode('ascii') or "User"
                 user["username"] = msg["from"].get("username", "")
             where = f"cmd {text[:30]}"
-            # === ADMIN COMMANDS - TANPA CONTINUE, PAKAI RETURN ===
             if is_admin(chat_id) and text.startswith("/"):
                 if handle_admin_command(chat_id, text):
                     return "ok", 200
@@ -498,9 +491,9 @@ def main_handler():
                 kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message_fast(chat_id, msg_id, f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend", kb)
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "🔧 Bantuan\n\nUntuk pertanyaan tentang penggunaan bot, saran fitur baru atau laporan bug tulis ke @joglendsupportBot.\n\nJogjaLend Bot V112", get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n`Versi Bot : V110.5`\n`Database : PostgreSQL (Neon)`\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis di @joglendsupportBot", get_back_keyboard())
             elif cdata == "admin_panel":
-                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, "🔧 ADMIN PANEL V112\n"+SEP+"\nPilih menu admin:", get_admin_panel())
+                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, "🔧 ADMIN PANEL V110.5\n"+SEP+"\nPilih menu admin:", get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, "Not admin", get_back_keyboard())
             elif cdata == "lend_tag":
                 edit_message_fast(chat_id, msg_id, f"🔔 Tag Saat Ini: {HASHTAG}\n{SEP}\nGanti dengan command:\n/settag #tagbaru", get_menu_1())
