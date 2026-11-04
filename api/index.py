@@ -11,13 +11,11 @@ app = Flask(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS","").split(",") if x.strip().isdigit()]
 CHANNEL_ID = os.getenv("CHANNEL_ID","@menfessangel")
-CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME","menfessangel")
 HASHTAG = os.getenv("HASHTAG","#JogjaLend")
 SUPPORT_BOT = "@joglendsupportBot"
 TEAM = "@jogja_lend"
 DATABASE_URL = os.getenv("DATABASE_URL")
-THREADS_TOKEN = os.getenv("THREADS_TOKEN","")
-BOT_VERSION = "V110.6"
+BOT_VERSION = "V110.7"
 PYTHON_VERSION = "3.12"
 DB_NAME = "PostgreSQL (Neon)"
 
@@ -32,8 +30,6 @@ for a,b in zip(_normal, _fancy):
 
 def F(text):
     return "".join(_FANCY_MAP.get(c,c) for c in text)
-
-SEP = "●-----------------------------------------------------●"
 
 # ============ DB ============
 def get_db():
@@ -130,7 +126,6 @@ def send_message(chat_id, text, reply_markup=None, parse_mode=None):
 
 def edit_message_fast(chat_id, msg_id, text, reply_markup=None, fancy=True):
     if fancy:
-        # Jangan convert yang ada di dalam `...` dan @username / link
         parts = re.split(r'(`[^`]+`|@\w+)', text)
         out=""
         for p in parts:
@@ -186,11 +181,15 @@ def add_watermark(image_bytes):
     except Exception as e:
         print("watermark err", e); return io.BytesIO(image_bytes)
 
-# ============ HANDLERS ============
+# ============ ROUTES - FIX 404 ============
+# Vercel: api/index.py -> /api/index
+# Jadi harus handle GET + POST di "/" agar Telegram POST /api/index tidak 404
+
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({"status":"ok","version":BOT_VERSION,"bot":"JogjaLend"})
 
+@app.route("/", methods=["POST"])
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
@@ -243,7 +242,6 @@ def webhook():
 {F("Untuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis ke")} @joglendsupportBot."""
                 edit_message_fast(chat_id, msg_id, info_text, get_back_keyboard(), fancy=False)
 
-            # ===== SYSTEM TOOLS =====
             elif cdata=="system_tools":
                 if not is_admin:
                     edit_message_fast(chat_id, msg_id, "Akses ditolak.", get_back_keyboard()); return jsonify({"ok":True})
@@ -255,7 +253,6 @@ def webhook():
                 except: total=0; today_posts=0
                 edit_message_fast(chat_id, msg_id, f"System Tools\n\nTotal Users: {total}\nPost Hari Ini: {today_posts}\nVersi: {BOT_VERSION}\nPython: {PYTHON_VERSION}\nDatabase: {DB_NAME}\nUptime: OK", get_back_keyboard())
 
-            # ===== LIST USERS =====
             elif cdata=="list_users":
                 if not is_admin:
                     edit_message_fast(chat_id, msg_id, "Akses ditolak.", get_back_keyboard()); return jsonify({"ok":True})
@@ -299,7 +296,6 @@ def webhook():
                 send_message(chat_id, info_text)
                 return jsonify({"ok":True})
 
-            # Post Text
             if text and not text.startswith("/"):
                 q = get_quota(user_id)
                 if q["text_count"] >= 5:
@@ -314,7 +310,6 @@ def webhook():
                     send_message(chat_id, "Gagal kirim. Coba lagi.")
                 return jsonify({"ok":True})
 
-            # Post Media
             if "photo" in msg or "video" in msg:
                 q = get_quota(user_id)
                 if q["media_count"] >= 5:
@@ -323,7 +318,6 @@ def webhook():
                 caption = msg.get("caption","") + f"\n\n{HASHTAG}\nvia @jogja_lend"
                 if "photo" in msg:
                     file_id = msg["photo"][-1]["file_id"]
-                    # get file path
                     f = tg("getFile",{"file_id":file_id})
                     if f.get("ok"):
                         fp = f["result"]["file_path"]
