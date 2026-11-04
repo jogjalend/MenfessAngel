@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V110.8 FULL FINAL - TANPA clear_reply_keyboard
+# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - FIX VERCEL 500
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time
 from datetime import datetime, timezone, timedelta
@@ -140,13 +140,13 @@ def send_message(chat_id, text, kb=None):
                     if "text" in btn and "url" not in btn: btn["text"] = F(btn["text"])
         payload = {"chat_id": chat_id, "text": F(text).replace("<plain>", "").replace("</plain>", ""), "parse_mode": "HTML", "disable_web_page_preview": True}
         if kb_fancy: payload["reply_markup"] = kb_fancy
-        r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload, timeout=10)
+        r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload, timeout=5)
         if r.status_code == 200: return True
     except: pass
     try:
         payload2 = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
         if kb: payload2["reply_markup"] = kb
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload2, timeout=10)
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload2, timeout=5)
         return True
     except: return False
 
@@ -160,13 +160,13 @@ def edit_message_fast(chat_id, msg_id, text, kb=None):
                     if "text" in btn and "url" not in btn: btn["text"] = F(btn["text"])
         payload = {"chat_id": chat_id, "message_id": msg_id, "text": F(text).replace("<plain>", "").replace("</plain>", ""), "parse_mode": "HTML", "disable_web_page_preview": True}
         if kb_fancy: payload["reply_markup"] = kb_fancy
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload, timeout=10)
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload, timeout=5)
         return True
     except:
         try:
             payload2 = {"chat_id": chat_id, "message_id": msg_id, "text": text, "disable_web_page_preview": True}
             if kb: payload2["reply_markup"] = kb
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload2, timeout=10)
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload2, timeout=5)
         except: pass
         return False
 
@@ -297,7 +297,7 @@ def send_stats(chat_id, user, mode="today"):
         if chart:
             chart.seek(0)
             try:
-                r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": cap}, files={"photo": ("s.jpg", chart, "image/jpeg")}, timeout=30).json()
+                r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": chat_id, "caption": cap}, files={"photo": ("s.jpg", chart, "image/jpeg")}, timeout=8).json()
                 if r.get("ok"):
                     send_message(chat_id, "Switch mode:", kb)
                     return
@@ -309,10 +309,10 @@ def post_to_threads(text_content):
         if not THREADS_USER_ID or not THREADS_TOKEN: return False
         data = {"media_type": "TEXT", "text": text_content[:450], "access_token": THREADS_TOKEN}
         if MAIN_THREAD_ID: data["reply_to_id"] = MAIN_THREAD_ID
-        r = requests.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads", data=data, timeout=10).json()
+        r = requests.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads", data=data, timeout=5).json()
         cid = r.get("id")
         if not cid: return False
-        r2 = requests.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish", data={"creation_id": cid, "access_token": THREADS_TOKEN}, timeout=10).json()
+        r2 = requests.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish", data={"creation_id": cid, "access_token": THREADS_TOKEN}, timeout=5).json()
         return "id" in r2
     except: return False
 def send_success(chat_id, user, ch_msg_id, target="both"):
@@ -398,7 +398,7 @@ def handle_admin_command(chat_id, text):
         return True
     if text.startswith("/setwebhook"):
         host = request.host_url.rstrip('/'); wh = f"{host}/api/index"
-        r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook", params={"url": wh}, timeout=10).json()
+        r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook", params={"url": wh}, timeout=5).json()
         send_message(chat_id, f"Webhook: {wh}\nResult: {r}")
         return True
     return False
@@ -410,7 +410,7 @@ def set_webhook():
         webhook_url = f"{host}/api/index"
         custom = os.getenv("WEBHOOK_URL")
         if custom: webhook_url = custom
-        r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook", params={"url": webhook_url}, timeout=10).json()
+        r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook", params={"url": webhook_url}, timeout=5).json()
         return f"Webhook set to {webhook_url}<br>{r}", 200
     except Exception as e:
         return f"Error set webhook: {e}", 500
@@ -418,7 +418,7 @@ def set_webhook():
 @app.route("/webhookinfo", methods=["GET"])
 def webhook_info():
     try:
-        r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo", timeout=10).json()
+        r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo", timeout=5).json()
         return jsonify(r), 200
     except Exception as e:
         return str(e), 500
@@ -436,7 +436,7 @@ def main_handler():
     data = {}; where = "init"
     try:
         where = "init_db"; init_db()
-        if request.method == "GET": return "JogjaLend Bot V110.8 FULL OK", 200
+        if request.method == "GET": return "JogjaLend Bot V110.9 FULL OK", 200
         where = "parse_json"; data = request.get_json(force=True, silent=True) or {}
         if "message" in data:
             msg = data["message"]; chat_id = msg["chat"]["id"]; uid = str(chat_id)
@@ -483,9 +483,9 @@ def main_handler():
                         if target in ["channel", "both"]:
                             if is_photo:
                                 raw = download_file(fid); wm = add_watermark(raw) if raw else None
-                                if wm: r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": base_cap, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", wm, "image/jpeg")}, timeout=15).json(); ch_id = r.get("result", {}).get("message_id")
+                                if wm: r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": base_cap, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", wm, "image/jpeg")}, timeout=8).json(); ch_id = r.get("result", {}).get("message_id")
                                 else: r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
-                            else: r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=8).json(); ch_id = r.get("result", {}).get("message_id")
+                            else: r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
                         if target in ["threads", "both"]: post_to_threads(base_cap)
                         user["today_media"] += 1; user["total_media"] += 1
                         save_user_to_db(uid, user); send_success(chat_id, user, ch_id, target)
@@ -494,7 +494,7 @@ def main_handler():
             where = f"callback {cdata}"
             try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id": cq["id"]}, timeout=2)
             except: pass
-            time.sleep(0.3)
+            # time.sleep(0.3) - DIHAPUS, bikin Vercel timeout 500
             user = get_user(uid)
             HASHTAG = get_setting('hashtag', '#jogjalend')
             if cdata in ["stats", "stats_today", "stats_weekly"]:
@@ -567,7 +567,7 @@ def main_handler():
                     edit_message_fast(chat_id, msg_id, f"📊 GLOBAL\nText: {s[0]}\nMedia: {s[1]}", get_admin_panel())
             elif cdata == "admin_broadcast": edit_message_fast(chat_id, msg_id, f"📢 Broadcast\n{SEP}\nKetik: /broadcast <pesan>\nAkan kirim ke semua user di DB", get_admin_panel())
             elif cdata == "admin_webhook":
-                r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo", timeout=10).json()
+                r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo", timeout=5).json()
                 res = r.get('result', {})
                 edit_message_fast(chat_id, msg_id, f"🔗 Webhook Info\nURL: {res.get('url')}\nPending: {res.get('pending_update_count')}\nLastError: {res.get('last_error_message')}\n\nUntuk set ulang /setwebhook", get_admin_panel())
             elif cdata == "admin_logs": edit_message_fast(chat_id, msg_id, f"📋 Logs\n{SEP}\nError otomatis ke {LOG_CHANNEL}\nCek /webhookinfo dan Vercel Logs", get_admin_panel())
@@ -593,3 +593,13 @@ def main_handler():
             else: print(f"[CRITICAL {where}] {e}\n{traceback.format_exc()}")
         except: print(f"[FATAL {where}] {e}\n{traceback.format_exc()}")
         return "ok", 200
+
+@app.errorhandler(500)
+def handle_500(e):
+    print(f"500 ERROR: {e}")
+    return "ok", 200
+
+@app.errorhandler(Exception)
+def handle_any(e):
+    print(f"ANY ERROR: {e}")
+    return "ok", 200
