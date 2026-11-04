@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V110.5 FULL
+# api/index.py - JogjaLend Bot Angel V110.6 FULL
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time
 from datetime import datetime, timezone, timedelta
@@ -76,7 +76,7 @@ def set_setting(k, v):
 def to_fancy(text):
     if not text:
         return ""
-    pattern = r'<code>.*?</code>|<[^>]+>|@\w+|#\w+|/\w+|https?://\S+|threads\.net/\S+|t\.me/\S+'
+    pattern = r'<plain>.*?</plain>|<code>.*?</code>|<[^>]+>|@\w+|#\w+|/\w+|https?://\S+|threads\.net/\S+|t\.me/\S+'
     res_parts = []; last_idx = 0
     for m in re.finditer(pattern, text):
         before = text[last_idx:m.start()]
@@ -138,7 +138,7 @@ def send_message(chat_id, text, kb=None):
             for row in kb_fancy["inline_keyboard"]:
                 for btn in row:
                     if "text" in btn and "url" not in btn: btn["text"] = F(btn["text"])
-        payload = {"chat_id": chat_id, "text": F(text), "parse_mode": "HTML", "disable_web_page_preview": True}
+        payload = {"chat_id": chat_id, "text": F(text).replace("<plain>", "").replace("</plain>", ""), "parse_mode": "HTML", "disable_web_page_preview": True}
         if kb_fancy: payload["reply_markup"] = kb_fancy
         r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload, timeout=10)
         if r.status_code == 200: return True
@@ -158,7 +158,7 @@ def edit_message_fast(chat_id, msg_id, text, kb=None):
             for row in kb_fancy["inline_keyboard"]:
                 for btn in row:
                     if "text" in btn and "url" not in btn: btn["text"] = F(btn["text"])
-        payload = {"chat_id": chat_id, "message_id": msg_id, "text": F(text), "parse_mode": "HTML", "disable_web_page_preview": True}
+        payload = {"chat_id": chat_id, "message_id": msg_id, "text": F(text).replace("<plain>", "").replace("</plain>", ""), "parse_mode": "HTML", "disable_web_page_preview": True}
         if kb_fancy: payload["reply_markup"] = kb_fancy
         requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload, timeout=10)
         return True
@@ -169,6 +169,12 @@ def edit_message_fast(chat_id, msg_id, text, kb=None):
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload2, timeout=10)
         except: pass
         return False
+
+def clear_reply_keyboard(chat_id):
+    try:
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": chat_id, "text": "Keyboard dibersihkan.", "reply_markup": {"remove_keyboard": True}}, timeout=5)
+    except:
+        pass
 
 def report_error(chat_id, where, error):
     err_str = str(error)
@@ -354,6 +360,14 @@ def send_user_list(chat_id):
         send_message(chat_id, f"Gagal ambil list: {e}")
 
 def handle_admin_command(chat_id, text):
+    if text.startswith("/clearkb"):
+        clear_reply_keyboard(chat_id)
+        return True
+    if text.startswith("/clearmenu"):
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/setChatMenuButton", json={"menu_button": {"type": "default"}}, timeout=5)
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMyCommands", json={}, timeout=5)
+        send_message(chat_id, "Menu button & commands dibersihkan")
+        return True
     if text.startswith("/ban"):
         parts = text.split()
         if len(parts) >= 2:
@@ -431,7 +445,7 @@ def main_handler():
     data = {}; where = "init"
     try:
         where = "init_db"; init_db()
-        if request.method == "GET": return "JogjaLend Bot V110.5 FULL OK", 200
+        if request.method == "GET": return "JogjaLend Bot V110.6 FULL OK", 200
         where = "parse_json"; data = request.get_json(force=True, silent=True) or {}
         if "message" in data:
             msg = data["message"]; chat_id = msg["chat"]["id"]; uid = str(chat_id)
@@ -448,6 +462,7 @@ def main_handler():
                     return "ok", 200
             if text.startswith("/start"):
                 user["last_date"] = datetime.now(WIB).strftime("%Y-%m-%d"); save_user_to_db(uid, user)
+                clear_reply_keyboard(chat_id)
                 send_message(chat_id, get_welcome_text(user), get_main_keyboard(is_admin(chat_id)))
             elif text.startswith("/newpost"): send_message(chat_id, f"Post Menfess\n{SEP}\nKetik langsung text / kirim media + caption\nAuto tag {HASHTAG}", get_back_keyboard())
             elif text.startswith("/profile"): send_message(chat_id, f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5", get_back_keyboard())
@@ -510,7 +525,7 @@ def main_handler():
                 kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message_fast(chat_id, msg_id, f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend", kb)
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n<code>Versi Bot : V110.5</code>\n<code>Database : PostgreSQL (Neon)</code>\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis di @joglendsupportBot", get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n<plain>Versi Bot : V110.5</plain>\n<plain>Database  : PostgreSQL</plain>\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis di @joglendsupportBot", get_back_keyboard())
             elif cdata == "admin_panel":
                 if is_admin(chat_id): edit_message_fast(chat_id, msg_id, "🔧 ADMIN PANEL V110.5\n"+SEP+"\nPilih menu admin:", get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, "Not admin", get_back_keyboard())
