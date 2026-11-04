@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - ADMIN MONO + FIX VERCEL 500
+# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - ADMIN MONO + PRE VERSI + BACK TOTAL USER
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time
 from datetime import datetime, timezone, timedelta
@@ -76,7 +76,6 @@ def set_setting(k, v):
 def to_fancy(text):
     if not text:
         return ""
-    # FIX: DOTALL biar <code> / <pre> multi-baris gak jebol
     pattern = r'<plain>.*?</plain>|<code>.*?</code>|<pre>.*?</pre>|<[^>]+>|@\w+|#\w+|/\w+|https?://\S+|threads\.net/\S+|t\.me/\S+'
     res_parts = []; last_idx = 0
     for m in re.finditer(pattern, text, flags=re.DOTALL):
@@ -96,8 +95,15 @@ def to_fancy(text):
         else: conv += c
     res_parts.append(conv); return "".join(res_parts)
 def F(t): return to_fancy(t)
-# Helper mono buat admin: isi pesan jadi mono, button tetep fancy
-def M(t): return f"<pre>{t}</pre>"
+def M(t):
+    # Mono per baris pake <code>, biar gak jadi blok abu-abu + SALIN KODE kayak <pre>
+    out = []
+    for line in t.split("\n"):
+        if line.strip() == "":
+            out.append("")
+        else:
+            out.append(f"<code>{line}</code>")
+    return "\n".join(out)
 
 USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0, "admin_target": "both", "warn": 0})
 
@@ -339,8 +345,9 @@ def send_user_list(chat_id):
         cur = db.cursor()
         cur.execute("SELECT user_id, name, username, total_text+total_media as total, banned FROM menfess_users ORDER BY total DESC")
         rows = cur.fetchall(); cur.close(); db.close()
+        back_kb = {"inline_keyboard": [[{"text": "Back", "callback_data": "admin_panel"}]]}
         if not rows:
-            send_message(chat_id, M("Belum ada user."))
+            send_message(chat_id, M("Belum ada user."), back_kb)
             return
         header = f"Total User: {len(rows)}\n------------------------------\nSemua Member:\n"
         txt = header
@@ -349,10 +356,10 @@ def send_user_list(chat_id):
             display = f"@{r[2]}" if r[2] else "-"
             line = f"{i}. {display} - {r[0]} ({r[3]}){status}\n"
             if len(txt) + len(line) > 3200:
-                send_message(chat_id, M(txt))
+                send_message(chat_id, M(txt), back_kb)
                 txt = f"Lanjutan ({i}/{len(rows)}):\n"
             txt += line
-        send_message(chat_id, M(txt))
+        send_message(chat_id, M(txt), back_kb)
     except Exception as e:
         send_message(chat_id, f"Gagal ambil list: {e}")
 
@@ -497,7 +504,6 @@ def main_handler():
             where = f"callback {cdata}"
             try: requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery", json={"callback_query_id": cq["id"]}, timeout=2)
             except: pass
-            # time.sleep(0.3) - DIHAPUS, bikin Vercel timeout 500
             user = get_user(uid)
             HASHTAG = get_setting('hashtag', '#jogjalend')
             if cdata in ["stats", "stats_today", "stats_weekly"]:
@@ -518,7 +524,7 @@ def main_handler():
                 kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message_fast(chat_id, msg_id, f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend", kb)
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n\n<code>Versi Bot : V110.9\nDatabase  : PostgreSQL</code>\n\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis di @joglendsupportBot", get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n\n<pre>Versi Bot : V110.9\nDatabase  : PostgreSQL</pre>\n\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis di @joglendsupportBot", get_back_keyboard())
             elif cdata == "admin_panel":
                 if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V110.9\n------------------------------\nPilih menu admin:"), get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, M("Not admin"), get_back_keyboard())
