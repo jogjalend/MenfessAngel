@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V110.6 FULL
+# api/index.py - JogjaLend Bot Angel V110.8 FULL FINAL - TANPA clear_reply_keyboard
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time
 from datetime import datetime, timezone, timedelta
@@ -169,12 +169,6 @@ def edit_message_fast(chat_id, msg_id, text, kb=None):
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", json=payload2, timeout=10)
         except: pass
         return False
-
-def clear_reply_keyboard(chat_id):
-    try:
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": chat_id, "text": "Keyboard dibersihkan.", "reply_markup": {"remove_keyboard": True}}, timeout=5)
-    except:
-        pass
 
 def report_error(chat_id, where, error):
     err_str = str(error)
@@ -360,9 +354,6 @@ def send_user_list(chat_id):
         send_message(chat_id, f"Gagal ambil list: {e}")
 
 def handle_admin_command(chat_id, text):
-    if text.startswith("/clearkb"):
-        clear_reply_keyboard(chat_id)
-        return True
     if text.startswith("/clearmenu"):
         requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/setChatMenuButton", json={"menu_button": {"type": "default"}}, timeout=5)
         requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMyCommands", json={}, timeout=5)
@@ -445,7 +436,7 @@ def main_handler():
     data = {}; where = "init"
     try:
         where = "init_db"; init_db()
-        if request.method == "GET": return "JogjaLend Bot V110.6 FULL OK", 200
+        if request.method == "GET": return "JogjaLend Bot V110.8 FULL OK", 200
         where = "parse_json"; data = request.get_json(force=True, silent=True) or {}
         if "message" in data:
             msg = data["message"]; chat_id = msg["chat"]["id"]; uid = str(chat_id)
@@ -462,7 +453,6 @@ def main_handler():
                     return "ok", 200
             if text.startswith("/start"):
                 user["last_date"] = datetime.now(WIB).strftime("%Y-%m-%d"); save_user_to_db(uid, user)
-                clear_reply_keyboard(chat_id)
                 send_message(chat_id, get_welcome_text(user), get_main_keyboard(is_admin(chat_id)))
             elif text.startswith("/newpost"): send_message(chat_id, f"Post Menfess\n{SEP}\nKetik langsung text / kirim media + caption\nAuto tag {HASHTAG}", get_back_keyboard())
             elif text.startswith("/profile"): send_message(chat_id, f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5", get_back_keyboard())
