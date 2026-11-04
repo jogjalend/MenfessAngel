@@ -1,6 +1,5 @@
-# api/index.py - JogjaLend Menfess Angel V110.8 Full
+# api/index.py - JogjaLend Bot Angel V110.9 Full
 import os
-import json
 import requests
 from flask import Flask, request, jsonify
 from datetime import datetime
@@ -8,23 +7,17 @@ from datetime import datetime
 app = Flask(__name__)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
-ADMIN_IDS = [int(x.strip()) for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip().isdigit()]
 CHANNEL_ID = os.environ.get("CHANNEL_ID", "")
-BOT_VERSION = "V110.8"
+WEBHOOK_URL = "https://menfess-angel.vercel.app/api/index"
+BOT_VERSION = "V110.9"
 
 API = f"https://api.telegram.org/bot{BOT_TOKEN}" if BOT_TOKEN else ""
 
-# ============ DB (in-memory fallback biar gak crash kalau DATABASE_URL kosong) ============
-# Kalau pakai Postgres di Vercel, ganti bagian ini dengan psycopg2
-# Untuk sekarang pakai dict biar bot langsung jalan, tidak 500
+# DB sementara - biar gak crash, menfess kesimpen selama gak redeploy
 menfess_db = []
 user_state = {}
 
-def get_db():
-    return menfess_db
-
-# ============ HELPERS TELEGRAM ============
+# ============ HELPERS ============
 def send_message(chat_id, text, reply_markup=None, parse_mode="HTML"):
     if not BOT_TOKEN:
         return None
@@ -32,8 +25,7 @@ def send_message(chat_id, text, reply_markup=None, parse_mode="HTML"):
     if reply_markup:
         payload["reply_markup"] = reply_markup
     try:
-        r = requests.post(f"{API}/sendMessage", json=payload, timeout=10)
-        return r.json()
+        return requests.post(f"{API}/sendMessage", json=payload, timeout=10).json()
     except Exception as e:
         print(f"send_message error: {e}")
         return None
@@ -43,111 +35,190 @@ def send_to_channel(text, reply_markup=None):
         return None
     return send_message(CHANNEL_ID, text, reply_markup)
 
-def main_keyboard():
+# ============ KEYBOARDS - MENU LAMA ============
+def main_menu_keyboard():
     return {
-        "keyboard": [
-            [{"text": "📝 Kirim Menfess"}],
-            [{"text": "📊 Status"}, {"text": "❓ Help"}]
-        ],
-        "resize_keyboard": True
+        "inline_keyboard": [
+            [{"text": "👤 My Profile", "callback_data": "profile"}, {"text": "💌 Post", "callback_data": "post"}],
+            [{"text": "🧵 Threads Setting", "callback_data": "threads"}],
+            [{"text": "📈 Stats", "callback_data": "stats"}, {"text": "ℹ️ Info Bot", "callback_data": "info"}],
+            [{"text": "ADMIN PANEL", "callback_data": "admin"}],
+        ]
     }
 
-def cancel_keyboard():
+def admin_keyboard():
     return {
-        "keyboard": [[{"text": "❌ Batal"}]],
-        "resize_keyboard": True
+        "inline_keyboard": [
+            [{"text": "🔔 Tag", "callback_data": "admin_tag"}],
+            [{"text": "📥 Mode Persetujuan", "callback_data": "admin_approve"}],
+            [{"text": "🗑️ Menghapus Pesan", "callback_data": "admin_delete"}],
+            [{"text": "🇮🇩 Lang", "callback_data": "admin_lang"}, {"text": "✅ Tutup", "callback_data": "close"}],
+            [{"text": "▶️ Lainnya", "callback_data": "admin_more"}],
+        ]
     }
 
-# ============ LOGIC BOT ============
+def system_tools_keyboard():
+    return {
+        "inline_keyboard": [
+            [{"text": "🔗 Set Webhook", "callback_data": "set_webhook"}],
+            [{"text": "🛰️ Webhook Info", "callback_data": "webhook_info"}],
+            [{"text": "🗑️ Delete Webhook", "callback_data": "delete_webhook"}],
+            [{"text": "⬅️ Kembali", "callback_data": "admin"}],
+        ]
+    }
+
+def back_keyboard():
+    return {"inline_keyboard": [[{"text": "⬅️ Kembali ke Menu", "callback_data": "back_menu"}]]}
+
+# ============ LOGIC ============
 def handle_update(update):
+    # 1. KLIK TOMBOL INLINE
+    if "callback_query" in update:
+        cb = update["callback_query"]
+        chat_id = cb["message"]["chat"]["id"]
+        data = cb.get("data", "")
+        try:
+            requests.post(f"{API}/answerCallbackQuery", json={"callback_query_id": cb["id"]}, timeout=5)
+        except:
+            pass
+
+        if data == "back_menu":
+            send_message(chat_id, "✨ <b>JogjaLend Bot Angel</b> ✨\n\nSelamat datang di JogjaLend Menfess!\nKirim menfess anonim kamu lewat tombol di bawah 👇", reply_markup=main_menu_keyboard())
+            return
+
+        if data == "profile":
+            send_message(chat_id, f"👤 <b>My Profile</b>\n━━━━━━━━━━━━━━\nID: <code>{chat_id}</code>\nStatus: Member ✅\nTotal menfess: <b>{len(menfess_db)}</b>", reply_markup=back_keyboard())
+            return
+
+        if data == "post":
+            user_state[chat_id] = "waiting_menfess"
+            send_message(chat_id, "Hi !\n━━━━━━━━━━━━━━━━━━━━\nPublish to @menfessangel\nTap Post!\n\nKuota\nMedia : 0/5\nText : 0/5\n\nKetik menfess kamu sekarang 📝", reply_markup=back_keyboard())
+            return
+
+        if data == "threads":
+            send_message(chat_id, "🧵 <b>Threads Setting</b>\n━━━━━━━━━━━━━━\nThreads kamu belum di-set.\nHubungi admin untuk setting threads.", reply_markup=back_keyboard())
+            return
+
+        if data == "stats":
+            send_message(chat_id, f"📈 <b>Stats</b>\n━━━━━━━━━━━━━━\nTotal menfess: <b>{len(menfess_db)}</b>\nBot: Aktif ✅\nVersi: {BOT_VERSION}", reply_markup=back_keyboard())
+            return
+
+        if data == "info":
+            send_message(chat_id, "ℹ️ <b>Info Bot</b>\n━━━━━━━━━━━━━━\n<b>JogjaLend Bot Angel</b>\nBot menfess anonim Jogja.\nKirim menfess tanpa ketahuan siapa kamu.", reply_markup=back_keyboard())
+            return
+
+        if data == "admin":
+            send_message(chat_id, "⚙️ <b>Pilih salah satu pengaturan yang ingin anda ubah.</b>", reply_markup=admin_keyboard())
+            return
+
+        if data == "close":
+            send_message(chat_id, "Ditutup ✅", reply_markup=main_menu_keyboard())
+            return
+
+        if data == "admin_tag":
+            send_message(chat_id, "🔔 <b>Tag</b>\n━━━━━━━━━━━━━━\nFitur Tag belum diaktifkan.\nHubungi admin.", reply_markup=admin_keyboard())
+            return
+
+        if data == "admin_approve":
+            send_message(chat_id, "📥 <b>Mode Persetujuan</b>\n━━━━━━━━━━━━━━\nSaat ini: Otomatis ✅\nSemua menfess langsung tayang tanpa persetujuan.", reply_markup=admin_keyboard())
+            return
+
+        if data == "admin_delete":
+            send_message(chat_id, "🗑️ <b>Menghapus Pesan</b>\n━━━━━━━━━━━━━━\nKirim ID menfess yang mau dihapus.\nContoh: /del 1", reply_markup=admin_keyboard())
+            return
+
+        if data == "admin_lang":
+            send_message(chat_id, "🇮🇩 <b>Lang</b>\n━━━━━━━━━━━━━━\nBahasa: Indonesia ✅", reply_markup=admin_keyboard())
+            return
+
+        # --- SYSTEM TOOLS ---
+        if data == "admin_more":
+            send_message(chat_id,
+                "⚙️ <b>System Tools</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"Webhook: {WEBHOOK_URL}\n"
+                "Kelola bot tanpa buka Vercel",
+                reply_markup=system_tools_keyboard())
+            return
+
+        if data == "set_webhook":
+            try:
+                r = requests.get(f"{API}/setWebhook", params={"url": WEBHOOK_URL}, timeout=10).json()
+                if r.get("ok"):
+                    send_message(chat_id, f"✅ <b>Webhook berhasil di-set!</b>\n\nURL: {WEBHOOK_URL}", reply_markup=system_tools_keyboard())
+                else:
+                    send_message(chat_id, f"❌ Gagal set webhook: {r}", reply_markup=system_tools_keyboard())
+            except Exception as e:
+                send_message(chat_id, f"❌ Error: {e}", reply_markup=system_tools_keyboard())
+            return
+
+        if data == "webhook_info":
+            try:
+                r = requests.get(f"{API}/getWebhookInfo", timeout=10).json()
+                info = r.get("result", {})
+                send_message(chat_id,
+                    "🛰️ <b>Webhook Info</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    f"URL: <code>{info.get('url','-')}</code>\n"
+                    f"Pending: {info.get('pending_update_count',0)}\n"
+                    f"Error: {info.get('last_error_message','-')}",
+                    reply_markup=system_tools_keyboard())
+            except Exception as e:
+                send_message(chat_id, f"❌ Error: {e}", reply_markup=system_tools_keyboard())
+            return
+
+        if data == "delete_webhook":
+            try:
+                requests.get(f"{API}/deleteWebhook", params={"drop_pending_updates": "true"}, timeout=10)
+                send_message(chat_id, "🗑️ Webhook dihapus! ✅\n\nBot bakal berhenti bales sampai kamu Set Webhook lagi.", reply_markup=system_tools_keyboard())
+            except Exception as e:
+                send_message(chat_id, f"❌ Error: {e}", reply_markup=system_tools_keyboard())
+            return
+
+        send_message(chat_id, f"Menu <b>{data}</b> belum di-set.", reply_markup=admin_keyboard())
+        return
+
+    # 2. PESAN BIASA
     if "message" not in update:
         return
     msg = update["message"]
     chat_id = msg.get("chat", {}).get("id")
-    user_id = msg.get("from", {}).get("id")
     text = msg.get("text", "") or ""
-    username = msg.get("from", {}).get("username", "anon")
-    first_name = msg.get("from", {}).get("first_name", "Anon")
-
     if not chat_id:
         return
 
-    # /start
     if text.startswith("/start"):
         send_message(chat_id,
-            f"Hai <b>{first_name}</b> 👋\n\n"
-            f"Selamat datang di <b>JogjaLend Menfess</b> ✨\n\n"
-            f"Klik <b>📝 Kirim Menfess</b> untuk kirim menfess anonim ke channel.\n"
-            f"Menfess kamu 100% anonim, admin tidak tau siapa pengirimnya.\n\n"
-            f"Bot: <code>{BOT_VERSION}</code>",
-            reply_markup=main_keyboard())
-        user_state.pop(user_id, None)
+            "✨ <b>JogjaLend Bot Angel</b> ✨\n\n"
+            "Selamat datang di JogjaLend Menfess!\n"
+            "Kirim menfess anonim kamu lewat tombol di bawah 👇",
+            reply_markup=main_menu_keyboard())
         return
 
-    # Batal
-    if text == "❌ Batal":
-        user_state.pop(user_id, None)
-        send_message(chat_id, "Dibatalkan ✅ Balik ke menu.", reply_markup=main_keyboard())
+    if text.startswith("/del"):
+        try:
+            mid = int(text.split()[1])
+            global menfess_db
+            menfess_db = [m for m in menfess_db if m["id"] != mid]
+            send_message(chat_id, f"Menfess #{mid} dihapus ✅", reply_markup=main_menu_keyboard())
+        except:
+            send_message(chat_id, "Format salah. Contoh: /del 1", reply_markup=main_menu_keyboard())
         return
 
-    # Menu Kirim Menfess
-    if text == "📝 Kirim Menfess":
-        user_state[user_id] = "waiting_menfess"
-        send_message(chat_id,
-            "Silahkan ketik menfess kamu sekarang 📝\n\n"
-            "Contoh:\n"
-            "<i>titip salam buat si dia yang di Kotagede, semangat yaa 🫶</i>\n\n"
-            "Ketik <b>❌ Batal</b> untuk batal.",
-            reply_markup=cancel_keyboard())
-        return
-
-    # Menu Status
-    if text == "📊 Status":
-        total = len(menfess_db)
-        send_message(chat_id, f"📊 <b>Status Bot</b>\n\nBot: Aktif ✅\nVersi: <code>{BOT_VERSION}</code>\nTotal menfess terkirim: <b>{total}</b>", reply_markup=main_keyboard())
-        return
-
-    # Menu Help
-    if text == "❓ Help" or text.startswith("/help"):
-        send_message(chat_id,
-            "❓ <b>Help JogjaLend</b>\n\n"
-            "1. Klik 📝 Kirim Menfess\n"
-            "2. Ketik isi menfess\n"
-            "3. Menfess dikirim ke channel anonim\n\n"
-            "Jangan kirim SARA, porn, dan doxing ya 🙏",
-            reply_markup=main_keyboard())
-        return
-
-    # Lagi nunggu menfess -> kirim ke channel
-    if user_state.get(user_id) == "waiting_menfess":
-        if len(text) < 5:
-            send_message(chat_id, "Menfess terlalu pendek, ketik yang lebih panjang yaa 🥺", reply_markup=cancel_keyboard())
+    if user_state.get(chat_id) == "waiting_menfess":
+        if len(text) < 3:
+            send_message(chat_id, "Menfess terlalu pendek, ketik yang lebih panjang yaa 🥺")
             return
-        # Simpan
         mid = len(menfess_db) + 1
         menfess_db.append({"id": mid, "text": text, "time": datetime.now().isoformat()})
-        user_state.pop(user_id, None)
-
-        # Kirim ke channel
-        channel_text = (
-            f"💌 <b>Menfess #{mid}</b>\n"
-            f"━━━━━━━━━━━━━━\n"
-            f"{text}\n"
-            f"━━━━━━━━━━━━━━\n"
-            f"<i>via @JogjaLendBot - Kirim menfess di bot ini yaa</i>"
-        )
-        res = send_to_channel(channel_text)
-        if res:
-            send_message(chat_id, f"Menfess kamu berhasil dikirim! ✅\n\nMenfess #{mid} udah tayang di channel 🎉", reply_markup=main_keyboard())
-        else:
-            # Kalau CHANNEL_ID belum di-set / salah, kasih tau user tapi tetap simpan
-            send_message(chat_id, f"Menfess kamu diterima ✅ (Menfess #{mid})\n\n⚠️ Channel belum ke-set, hubungi admin untuk cek CHANNEL_ID di Vercel.", reply_markup=main_keyboard())
+        user_state.pop(chat_id, None)
+        send_to_channel(f"💌 <b>Menfess #{mid}</b>\n━━━━━━━━━━━━━━\n{text}\n━━━━━━━━━━━━━━\n<i>via @JogjaLendBot</i>")
+        send_message(chat_id, f"Menfess #{mid} berhasil dikirim! ✅", reply_markup=main_menu_keyboard())
         return
 
-    # Default - belum pilih menu
-    send_message(chat_id, "Klik <b>📝 Kirim Menfess</b> dulu ya untuk kirim menfess ✨", reply_markup=main_keyboard())
+    send_message(chat_id, "Klik tombol di bawah ya 👇", reply_markup=main_menu_keyboard())
 
-# ============ ROUTES - INI YANG BIKIN 404 KEMARIN, SEKARANG SEMUA PATH MASUK KE 1 FUNGSI ============
+# ============ ROUTES - SEMUA PATH MASUK KE 1 FUNGSI BIAR GAK 404 ============
 @app.route("/", methods=["GET", "POST"])
 @app.route("/api/index", methods=["GET", "POST"])
 @app.route("/api/index/", methods=["GET", "POST"])
@@ -156,7 +227,7 @@ def handle_update(update):
 @app.route("/<path:path>", methods=["GET", "POST"])
 def webhook(path=None):
     if request.method == "GET":
-        return jsonify({"status": "ok", "version": BOT_VERSION, "bot": "JogjaLend", "path": path or "/"})
+        return jsonify({"status": "ok", "version": BOT_VERSION, "bot": "JogjaLend"})
     try:
         update = request.get_json(force=True, silent=True)
         if not update:
@@ -167,6 +238,5 @@ def webhook(path=None):
         print(f"webhook error: {e}")
         return jsonify({"ok": False, "error": str(e)}), 200
 
-# Wajib untuk Vercel Flask
 if __name__ == "__main__":
     app.run()
