@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V110.9 Full
+# api/index.py - JogjaLend Bot Angel V110.9 Full FIX 500
 import os
 import requests
 from flask import Flask, request, jsonify
@@ -13,7 +13,6 @@ BOT_VERSION = "V110.9"
 
 API = f"https://api.telegram.org/bot{BOT_TOKEN}" if BOT_TOKEN else ""
 
-# DB sementara - biar gak crash, menfess kesimpen selama gak redeploy
 menfess_db = []
 user_state = {}
 
@@ -35,7 +34,7 @@ def send_to_channel(text, reply_markup=None):
         return None
     return send_message(CHANNEL_ID, text, reply_markup)
 
-# ============ KEYBOARDS - MENU LAMA ============
+# ============ KEYBOARDS ============
 def main_menu_keyboard():
     return {
         "inline_keyboard": [
@@ -72,7 +71,6 @@ def back_keyboard():
 
 # ============ LOGIC ============
 def handle_update(update):
-    # 1. KLIK TOMBOL INLINE
     if "callback_query" in update:
         cb = update["callback_query"]
         chat_id = cb["message"]["chat"]["id"]
@@ -131,14 +129,8 @@ def handle_update(update):
             send_message(chat_id, "🇮🇩 <b>Lang</b>\n━━━━━━━━━━━━━━\nBahasa: Indonesia ✅", reply_markup=admin_keyboard())
             return
 
-        # --- SYSTEM TOOLS ---
         if data == "admin_more":
-            send_message(chat_id,
-                "⚙️ <b>System Tools</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                f"Webhook: {WEBHOOK_URL}\n"
-                "Kelola bot tanpa buka Vercel",
-                reply_markup=system_tools_keyboard())
+            send_message(chat_id, "⚙️ <b>System Tools</b>\n━━━━━━━━━━━━━━━━━━━━\nWebhook: " + WEBHOOK_URL + "\nKelola bot tanpa buka Vercel", reply_markup=system_tools_keyboard())
             return
 
         if data == "set_webhook":
@@ -156,13 +148,7 @@ def handle_update(update):
             try:
                 r = requests.get(f"{API}/getWebhookInfo", timeout=10).json()
                 info = r.get("result", {})
-                send_message(chat_id,
-                    "🛰️ <b>Webhook Info</b>\n"
-                    "━━━━━━━━━━━━━━━━━━━━\n"
-                    f"URL: <code>{info.get('url','-')}</code>\n"
-                    f"Pending: {info.get('pending_update_count',0)}\n"
-                    f"Error: {info.get('last_error_message','-')}",
-                    reply_markup=system_tools_keyboard())
+                send_message(chat_id, "🛰️ <b>Webhook Info</b>\n━━━━━━━━━━━━━━━━━━━━\nURL: <code>" + str(info.get('url','-')) + "</code>\nPending: " + str(info.get('pending_update_count',0)) + "\nError: " + str(info.get('last_error_message','-')), reply_markup=system_tools_keyboard())
             except Exception as e:
                 send_message(chat_id, f"❌ Error: {e}", reply_markup=system_tools_keyboard())
             return
@@ -178,7 +164,6 @@ def handle_update(update):
         send_message(chat_id, f"Menu <b>{data}</b> belum di-set.", reply_markup=admin_keyboard())
         return
 
-    # 2. PESAN BIASA
     if "message" not in update:
         return
     msg = update["message"]
@@ -188,18 +173,13 @@ def handle_update(update):
         return
 
     if text.startswith("/start"):
-        send_message(chat_id,
-            "✨ <b>JogjaLend Bot Angel</b> ✨\n\n"
-            "Selamat datang di JogjaLend Menfess!\n"
-            "Kirim menfess anonim kamu lewat tombol di bawah 👇",
-            reply_markup=main_menu_keyboard())
+        send_message(chat_id, "✨ <b>JogjaLend Bot Angel</b> ✨\n\nSelamat datang di JogjaLend Menfess!\nKirim menfess anonim kamu lewat tombol di bawah 👇", reply_markup=main_menu_keyboard())
         return
 
     if text.startswith("/del"):
         try:
             mid = int(text.split()[1])
-            global menfess_db
-            menfess_db = [m for m in menfess_db if m["id"] != mid]
+            menfess_db[:] = [m for m in menfess_db if m["id"] != mid]
             send_message(chat_id, f"Menfess #{mid} dihapus ✅", reply_markup=main_menu_keyboard())
         except:
             send_message(chat_id, "Format salah. Contoh: /del 1", reply_markup=main_menu_keyboard())
@@ -218,7 +198,7 @@ def handle_update(update):
 
     send_message(chat_id, "Klik tombol di bawah ya 👇", reply_markup=main_menu_keyboard())
 
-# ============ ROUTES - SEMUA PATH MASUK KE 1 FUNGSI BIAR GAK 404 ============
+# ============ ROUTES ============
 @app.route("/", methods=["GET", "POST"])
 @app.route("/api/index", methods=["GET", "POST"])
 @app.route("/api/index/", methods=["GET", "POST"])
