@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V112.0 FAST + X AUTO SHARE ADMIN ONLY - FIXED V2
+# api/index.py - JogjaLend Bot Angel V113 FAST + X AUTO SHARE + X PREMIUM QRIS 100K
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time, hmac, hashlib, base64, urllib.parse
 from datetime import datetime, timezone, timedelta
@@ -28,11 +28,17 @@ LOG_CHANNEL = os.getenv("LOG_CHANNEL") or CHANNEL_ID
 WIB = timezone(timedelta(hours=7))
 SEP = "●-----------------------------------------------------●"
 
-# ===== X ENV - ISI DI VERCEL =====
+# ===== X ENV =====
 X_API_KEY = os.getenv("X_API_KEY") or ""
 X_API_SECRET = os.getenv("X_API_SECRET") or ""
 X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN") or ""
 X_ACCESS_SECRET = os.getenv("X_ACCESS_SECRET") or ""
+
+# ===== QRIS / X PREMIUM ENV - ISI DI VERCEL =====
+QRIS_IMAGE_URL = os.getenv("QRIS_IMAGE_URL") or ""
+QRIS_TEXT = os.getenv("QRIS_TEXT") or "QRIS a.n jogjaStore scan QR di atas"
+X_PRICE = os.getenv("X_PRICE") or "Rp 100.000 / 30 hari"
+PREMIUM_DAYS = int(os.getenv("PREMIUM_DAYS") or "30")
 
 TG = requests.Session()
 TG.headers.update({"Connection": "keep-alive"})
@@ -40,7 +46,7 @@ BASE_TG = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 SETTINGS_CACHE = {}
 SETTINGS_CACHE_TIME = 0
-USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0, "admin_target": "both", "warn": 0})
+USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0, "admin_target": "both", "warn": 0, "waiting_proof": False, "x_premium_until": "", "x_auto": True})
 
 _db_pool = None
 def get_pool():
@@ -80,6 +86,7 @@ def init_db():
     try:
         cur = db.cursor()
         cur.execute("CREATE TABLE IF NOT EXISTS menfess_users (user_id TEXT PRIMARY KEY, name TEXT, username TEXT, threads_on BOOLEAN DEFAULT FALSE, today_text INT DEFAULT 0, today_media INT DEFAULT 0, last_date TEXT, banned BOOLEAN DEFAULT FALSE, total_text INT DEFAULT 0, total_media INT DEFAULT 0, total_chars INT DEFAULT 0, admin_target TEXT DEFAULT 'both', warn INT DEFAULT 0)")
+        cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS x_premium_until TEXT DEFAULT ''")
         cur.execute("CREATE TABLE IF NOT EXISTS bot_settings (key TEXT PRIMARY KEY, value TEXT)")
         cur.execute("INSERT INTO bot_settings (key, value) VALUES ('hashtag', '#jogjalend') ON CONFLICT (key) DO NOTHING")
         cur.execute("INSERT INTO bot_settings (key, value) VALUES ('peraturan', '1. No SARA & Porn\n2. No spam\n3. Max 5 post/hari') ON CONFLICT (key) DO NOTHING")
@@ -117,7 +124,7 @@ def set_setting(k, v):
     except: pass
     finally: release_db(db)
 
-# ===== X - OAUTH 1.0a MANUAL (No tweepy needed) =====
+# ===== X - OAUTH 1.0a MANUAL =====
 def _x_oauth_header(method, url, extra_params=None):
     if not X_API_KEY or not X_API_SECRET or not X_ACCESS_TOKEN or not X_ACCESS_SECRET:
         return None
@@ -154,7 +161,6 @@ def _x_upload_media(photo_bytes):
         print(f"X upload error: {e}")
         return None
 
-# ===== FIXED: Pake v2, bukan v1.1 lagi (v1.1 = 404) =====
 def post_to_x(text_content, photo_bytes=None):
     try:
         if not X_API_KEY or not X_API_SECRET or not X_ACCESS_TOKEN or not X_ACCESS_SECRET:
@@ -207,9 +213,9 @@ def load_user_from_db(uid):
     if not db: return None
     try:
         cur = db.cursor()
-        cur.execute("SELECT name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target, warn FROM menfess_users WHERE user_id=%s", (uid,))
+        cur.execute("SELECT name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target, warn, x_premium_until FROM menfess_users WHERE user_id=%s", (uid,))
         row = cur.fetchone(); cur.close()
-        if row: return {"name": row[0] or "", "username": row[1] or "", "threads_on": row[2] or False, "today_text": row[3] or 0, "today_media": row[4] or 0, "last_date": row[5] or "", "banned": row[6] or False, "total_text": row[7] or 0, "total_media": row[8] or 0, "total_chars": row[9] or 0, "admin_target": row[10] or "both", "warn": row[11] or 0}
+        if row: return {"name": row[0] or "", "username": row[1] or "", "threads_on": row[2] or False, "today_text": row[3] or 0, "today_media": row[4] or 0, "last_date": row[5] or "", "banned": row[6] or False, "total_text": row[7] or 0, "total_media": row[8] or 0, "total_chars": row[9] or 0, "admin_target": row[10] or "both", "warn": row[11] or 0, "x_premium_until": row[12] or "", "waiting_proof": False, "x_auto": True}
     except: return None
     finally: release_db(db)
     return None
@@ -219,7 +225,7 @@ def save_user_to_db(uid, user):
     if not db: return
     try:
         cur = db.cursor()
-        cur.execute("INSERT INTO menfess_users (user_id, name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target, warn) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (user_id) DO UPDATE SET name=%s, username=%s, threads_on=%s, today_text=%s, today_media=%s, last_date=%s, banned=%s, total_text=%s, total_media=%s, total_chars=%s, admin_target=%s, warn=%s", (uid, user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars", 0), user.get("admin_target", "both"), user.get("warn", 0), user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars", 0), user.get("admin_target", "both"), user.get("warn", 0)))
+        cur.execute("INSERT INTO menfess_users (user_id, name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target, warn, x_premium_until) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (user_id) DO UPDATE SET name=%s, username=%s, threads_on=%s, today_text=%s, today_media=%s, last_date=%s, banned=%s, total_text=%s, total_media=%s, total_chars=%s, admin_target=%s, warn=%s, x_premium_until=%s", (uid, user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars", 0), user.get("admin_target", "both"), user.get("warn", 0), user.get("x_premium_until",""), user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars", 0), user.get("admin_target", "both"), user.get("warn", 0), user.get("x_premium_until","")))
         db.commit(); cur.close()
     except: pass
     finally: release_db(db)
@@ -235,6 +241,14 @@ def get_user(uid):
     return u
 
 def is_admin(uid): return str(uid) in ADMIN_ID.split(",") if ADMIN_ID else False
+
+def is_premium_active(user):
+    try:
+        until = user.get("x_premium_until","") or ""
+        if not until: return False
+        dt = datetime.strptime(until, "%Y-%m-%d").replace(tzinfo=WIB)
+        return datetime.now(WIB) <= dt + timedelta(days=1)
+    except: return False
 
 def send_message(chat_id, text, kb=None):
     try:
@@ -269,13 +283,29 @@ def report_error(chat_id, where, error):
     if "Timeout" in err_str or "timed out" in err_str: return
     print(f"ERROR {where}: {err_str}")
 
+# ===== QRIS / PREMIUM HELPERS =====
+def send_qris(chat_id):
+    if QRIS_IMAGE_URL:
+        try:
+            TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": chat_id, "photo": QRIS_IMAGE_URL, "caption": f"Scan QRIS ini buat bayar X Premium\nHarga: {X_PRICE}"}, timeout=5)
+            return True
+        except: pass
+    return False
+
+def get_x_premium_keyboard(user=None):
+    if user and is_premium_active(user):
+        auto = "ON" if user.get("x_auto", True) else "OFF"
+        return {"inline_keyboard": [[{"text": f"𝕏 X Auto Post: {auto}", "callback_data": "x_toggle_auto"}], [{"text": "Back", "callback_data": "back_home"}]]}
+    return {"inline_keyboard": [[{"text": "💳 Sudah Transfer, Kirim Bukti", "callback_data": "x_pay_proof"}], [{"text": "Back", "callback_data": "back_home"}]]}
+
 def get_welcome_text(user):
     hashtag = get_setting('hashtag', '#jogjalend')
-    return f"Hi !\n{SEP}\nPublish to {CHANNEL_ID}\nTap Post!\n\nKuota\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5\nTag: {hashtag}"
+    prem = " ✅ X Premium" if is_premium_active(user) else ""
+    return f"Hi !{prem}\n{SEP}\nPublish to {CHANNEL_ID}\nTap Post!\n\nKuota\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5\nTag: {hashtag}"
 
 def get_back_keyboard(): return {"inline_keyboard": [[{"text": "Back", "callback_data": "back_home"}]]}
 def get_main_keyboard(is_ad=False):
-    kb = {"inline_keyboard": [[{"text": "👤 My Profile", "callback_data": "my_profile"}, {"text": "💌 Post", "callback_data": "post"}], [{"text": "📧 Threads Setting", "callback_data": "threads"}], [{"text": "📈 Stats", "callback_data": "stats"}, {"text": "ℹ️ Info Bot", "callback_data": "info_bot"}]]}
+    kb = {"inline_keyboard": [[{"text": "👤 My Profile", "callback_data": "my_profile"}, {"text": "💌 Post", "callback_data": "post"}], [{"text": "📧 Threads Setting", "callback_data": "threads"}], [{"text": "𝕏 X Premium", "callback_data": "x_premium"}], [{"text": "📈 Stats", "callback_data": "stats"}, {"text": "ℹ️ Info Bot", "callback_data": "info_bot"}]]}
     if is_ad: kb["inline_keyboard"].append([{"text": "🔧 ADMIN PANEL", "callback_data": "admin_panel"}])
     return kb
 def get_menu_1():
@@ -427,8 +457,11 @@ def send_success(chat_id, user, ch_msg_id, target="both"):
         if ch_msg_id: buttons.append([{"text": "Delete", "callback_data": f"del_{ch_msg_id}"}])
         buttons.append([{"text": "Back", "callback_data": "back_home"}])
         note = f" -> {target.upper()}" if is_admin(chat_id) else ""
-        if is_admin(chat_id) and get_setting('x_auto_share', 'off') == 'on':
+        # Premium user auto ke X jika ON dan x_auto_share ON
+        if is_premium_active(user) and user.get("x_auto", True) and get_setting('x_auto_share', 'off') == 'on':
             note += " + X"
+        if is_admin(chat_id) and get_setting('x_auto_share', 'off') == 'on':
+            if " + X" not in note: note += " + X"
         send_message(chat_id, f"Menfess sent!{note}\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5", {"inline_keyboard": buttons})
     except Exception as e: report_error(chat_id, "send_success", e)
 
@@ -438,7 +471,7 @@ def send_user_list(chat_id):
         send_message(chat_id, "DB belum connect"); return
     try:
         cur = db.cursor()
-        cur.execute("SELECT user_id, name, username, total_text+total_media as total, banned FROM menfess_users ORDER BY total DESC")
+        cur.execute("SELECT user_id, name, username, total_text+total_media as total, banned, x_premium_until FROM menfess_users ORDER BY total DESC")
         rows = cur.fetchall(); cur.close()
         back_kb = {"inline_keyboard": [[{"text": "Back", "callback_data": "admin_panel"}]]}
         if not rows:
@@ -447,8 +480,9 @@ def send_user_list(chat_id):
         txt = header + "\n"
         for i, r in enumerate(rows, 1):
             status = " BANNED" if r[4] else ""
+            prem = " 👑" if r[5] else ""
             display = f"<a href=\"tg://user?id={r[0]}\">@{r[2]}</a>" if r[2] else f"<a href=\"tg://user?id={r[0]}\">{r[0]}</a>"
-            line = f"{i}. {display} - {r[0]} ({r[3]}){status}\n"
+            line = f"{i}. {display} - {r[0]} ({r[3]}){status}{prem}\n"
             if len(txt) + len(line) > 3200:
                 send_message(chat_id, txt, back_kb)
                 txt = M(f"Lanjutan ({i}/{len(rows)}):") + "\n"
@@ -534,7 +568,7 @@ def webhook_info():
 def main_handler():
     data = {}; where = "init"
     try:
-        if request.method == "GET": return "JogjaLend Bot V112.0 FAST + X OK", 200
+        if request.method == "GET": return "JogjaLend Bot V113 FAST + X + QRIS OK", 200
         where = "parse_json"; data = request.get_json(force=True, silent=True) or {}
         if "message" in data:
             msg = data["message"]; chat_id = msg["chat"]["id"]; uid = str(chat_id)
@@ -551,9 +585,24 @@ def main_handler():
                 save_user_to_db(uid, user)
                 send_message(chat_id, get_welcome_text(user), get_main_keyboard(is_admin(chat_id)))
             elif text.startswith("/newpost"): send_message(chat_id, f"Post Menfess\n{SEP}\nKetik langsung text / kirim media + caption\nAuto tag {HASHTAG}", get_back_keyboard())
-            elif text.startswith("/profile"): send_message(chat_id, f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5", get_back_keyboard())
+            elif text.startswith("/profile"): send_message(chat_id, f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5\nX Premium: {'AKTIF sampai '+user.get('x_premium_until','') if is_premium_active(user) else 'Tidak aktif'}", get_back_keyboard())
             elif text.lower().startswith("/stats"): send_stats(chat_id, user, "today")
             elif not user["banned"]:
+                # ===== BUKTI TRANSFER PREMIUM =====
+                if user.get("waiting_proof") and ("photo" in msg or "video" in msg):
+                    user["waiting_proof"] = False
+                    save_user_to_db(uid, user)
+                    fid = msg["photo"][-1]["file_id"] if "photo" in msg else msg.get("video", {}).get("file_id")
+                    send_message(chat_id, f"Bukti diterima! ✅\n{SEP}\nAdmin lagi cek pembayaran lu. Tunggu notif approve ya.", get_back_keyboard())
+                    # Kirim ke admin
+                    for adm in ADMIN_ID.split(","):
+                        adm = adm.strip()
+                        if not adm: continue
+                        try:
+                            TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": adm, "photo": fid, "caption": f"💰 PEMBAYARAN X PREMIUM\nUser: {user['name']} (@{user['username']})\nID: {uid}\nHarga: {X_PRICE}"}, timeout=5)
+                            send_message(adm, f"Approve user ini?", {"inline_keyboard": [[{"text": "✅ Approve 30 Hari", "callback_data": f"x_approve_{uid}"}, {"text": "❌ Tolak", "callback_data": f"x_reject_{uid}"}]]})
+                        except: pass
+                    return "ok", 200
                 if text and not text.startswith("/") and len(text) >= 3:
                     if user["today_text"] >= 5: send_message(chat_id, f"Limit 5/5\n{SEP}\nReset 00:00 WIB", get_back_keyboard())
                     else:
@@ -565,7 +614,7 @@ def main_handler():
                             r = TG.post(f"{BASE_TG}/sendMessage", json={"chat_id": CHANNEL_ID, "text": clean, "parse_mode": "HTML"}, timeout=3).json()
                             ch_id = r.get("result", {}).get("message_id")
                         if target in ["threads", "both"]: post_to_threads(clean)
-                        if is_admin(chat_id) and get_setting('x_auto_share', 'off') == 'on':
+                        if (is_admin(chat_id) or (is_premium_active(user) and user.get("x_auto", True))) and get_setting('x_auto_share', 'off') == 'on':
                             post_to_x(clean)
                         user["today_text"] += 1; user["total_text"] += 1; user["total_chars"] = user.get("total_chars", 0)+len(text)
                         save_user_to_db(uid, user); send_success(chat_id, user, ch_id, target)
@@ -590,7 +639,7 @@ def main_handler():
                             else:
                                 r = TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
                         if target in ["threads", "both"]: post_to_threads(base_cap)
-                        if is_admin(chat_id) and get_setting('x_auto_share', 'off') == 'on':
+                        if (is_admin(chat_id) or (is_premium_active(user) and user.get("x_auto", True))) and get_setting('x_auto_share', 'off') == 'on':
                             if is_photo and wm_bytes:
                                 post_to_x(base_cap, wm_bytes)
                             elif not is_photo:
@@ -612,7 +661,7 @@ def main_handler():
             elif cdata == "back_home": edit_message_fast(chat_id, msg_id, get_welcome_text(user), get_main_keyboard(is_admin(chat_id)))
             elif cdata == "lend_page1": edit_message_fast(chat_id, msg_id, M("Pilih salah satu pengaturan yang ingin anda ubah."), get_menu_1())
             elif cdata == "lend_page2": edit_message_fast(chat_id, msg_id, M("Pilih salah satu pengaturan yang ingin anda ubah."), get_menu_2())
-            elif cdata == "my_profile": edit_message_fast(chat_id, msg_id, f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5\nHashtag: {HASHTAG}", get_back_keyboard())
+            elif cdata == "my_profile": edit_message_fast(chat_id, msg_id, f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5\nHashtag: {HASHTAG}\nX Premium: {'AKTIF sampai '+user.get('x_premium_until','') if is_premium_active(user) else 'Tidak aktif'}", get_back_keyboard())
             elif cdata == "post": edit_message_fast(chat_id, msg_id, f"Post Menfess\n{SEP}\nKetik langsung text / kirim media + caption\nAuto tag {HASHTAG}", get_back_keyboard())
             elif cdata == "threads":
                 kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
@@ -622,9 +671,42 @@ def main_handler():
                 kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message_fast(chat_id, msg_id, f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend", kb)
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n<pre>Versi Bot : V112.0\nDatabase  : PostgreSQL</pre>\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis di @joglendsupportBot", get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n<pre>Versi Bot : V113\nDatabase  : PostgreSQL</pre>\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis di @joglendsupportBot", get_back_keyboard())
+            # ===== X PREMIUM =====
+            elif cdata == "x_premium":
+                if is_premium_active(user):
+                    auto = "ON" if user.get("x_auto", True) else "OFF"
+                    edit_message_fast(chat_id, msg_id, f"𝕏 X Premium AKTIF ✅\n{SEP}\nAktif sampai: {user.get('x_premium_until','')}\nStatus Auto Post: {auto}\nMenfess lu akan auto ke X kalau ON.", get_x_premium_keyboard(user))
+                else:
+                    send_qris(chat_id)
+                    edit_message_fast(chat_id, msg_id, f"𝕏 X Premium 🔒\n{SEP}\nBiar menfess lu auto ke X juga.\n\nHarga: {X_PRICE}\n{QRIS_TEXT}\n\nCara:\n1. Transfer sesuai harga\n2. Klik 'Sudah Transfer'\n3. Kirim foto bukti transfer ke sini\n4. Tunggu admin approve", get_x_premium_keyboard(user))
+            elif cdata == "x_pay_proof":
+                user["waiting_proof"] = True; save_user_to_db(uid, user)
+                edit_message_fast(chat_id, msg_id, f"Kirim Bukti Transfer\n{SEP}\nSilakan kirim FOTO bukti transfer QRIS lu ke sini sekarang.\nJangan kirim menfess dulu, kirim fotonya aja.", get_back_keyboard())
+            elif cdata == "x_toggle_auto":
+                if is_premium_active(user):
+                    user["x_auto"] = not user.get("x_auto", True); save_user_to_db(uid, user)
+                    auto = "ON" if user.get("x_auto", True) else "OFF"
+                    edit_message_fast(chat_id, msg_id, f"𝕏 X Premium AKTIF ✅\n{SEP}\nAktif sampai: {user.get('x_premium_until','')}\nStatus Auto Post: {auto}", get_x_premium_keyboard(user))
+            elif cdata.startswith("x_approve_"):
+                if not is_admin(chat_id):
+                    edit_message_fast(chat_id, msg_id, M("Not admin"), get_back_keyboard())
+                else:
+                    target_id = cdata.replace("x_approve_", "")
+                    tu = get_user(target_id)
+                    until = (datetime.now(WIB) + timedelta(days=PREMIUM_DAYS)).strftime("%Y-%m-%d")
+                    tu["x_premium_until"] = until; tu["x_auto"] = True; save_user_to_db(target_id, tu)
+                    edit_message_fast(chat_id, msg_id, f"✅ Approved! User {target_id} aktif sampai {until}", get_admin_panel())
+                    send_message(target_id, f"🎉 X Premium AKTIF!\n{SEP}\nSampai: {until}\nMenfess lu sekarang auto ke X. Cek di menu X Premium buat ON/OFF.", get_back_keyboard())
+            elif cdata.startswith("x_reject_"):
+                if not is_admin(chat_id):
+                    edit_message_fast(chat_id, msg_id, M("Not admin"), get_back_keyboard())
+                else:
+                    target_id = cdata.replace("x_reject_", "")
+                    edit_message_fast(chat_id, msg_id, f"❌ Ditolak. User {target_id}", get_admin_panel())
+                    send_message(target_id, f"❌ Pembayaran X Premium ditolak.\n{SEP}\nHubungi admin kalau lu merasa udah transfer.", get_back_keyboard())
             elif cdata == "admin_panel":
-                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V112.0\n------------------------------\nPilih menu admin:"), get_admin_panel())
+                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V113\n------------------------------\nPilih menu admin:"), get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, M("Not admin"), get_back_keyboard())
             elif cdata == "admin_x_toggle":
                 if not is_admin(chat_id):
@@ -633,7 +715,7 @@ def main_handler():
                     cur = get_setting('x_auto_share', 'off')
                     new = 'on' if cur == 'off' else 'off'
                     set_setting('x_auto_share', new)
-                    edit_message_fast(chat_id, msg_id, M(f"X Auto Share: {new.upper()}\n------------------------------\n{'Post admin sekarang auto ke X.' if new=='on' else 'Auto share ke X dimatikan.'}\nCek ENV X di Vercel kalau gagal."), get_admin_panel())
+                    edit_message_fast(chat_id, msg_id, M(f"X Auto Share: {new.upper()}\n------------------------------\n{'Post admin + user Premium sekarang auto ke X.' if new=='on' else 'Auto share ke X dimatikan.'}\nCek ENV X di Vercel kalau gagal."), get_admin_panel())
             elif cdata == "admin_x_test":
                 if not is_admin(chat_id):
                     edit_message_fast(chat_id, msg_id, M("Not admin"), get_back_keyboard())
