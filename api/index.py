@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - PRE TANPA SPASI ATAS BAWAH + CLICKABLE
+# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - FIXED 18%
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time
 from datetime import datetime, timezone, timedelta
@@ -235,28 +235,60 @@ def get_channel_target_keyboard(user):
         [{"text": "⬅️ Kembali", "callback_data": "admin_panel"}]
     ]}
 
+# ===== FIXED: LOGO / WATERMARK 18% =====
 def find_logo():
-    for p in ["logo.png", "../logo.png", os.path.join(os.path.dirname(__file__), "../logo.png"), os.path.join(os.path.dirname(__file__), "logo.png")]:
-        if os.path.exists(p): return p
+    base_dir = os.path.dirname(__file__)
+    candidates = [
+        os.path.join(base_dir, "logo.png"),
+        os.path.join(base_dir, "../logo.png"),
+        "logo.png",
+        "../logo.png",
+        os.path.join(os.getcwd(), "logo.png"),
+        os.path.join(os.getcwd(), "api/logo.png"),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
     return None
+
 def download_file(file_id):
     try:
         info = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile", params={"file_id": file_id}, timeout=5).json()
         fp = info["result"]["file_path"]
         return requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}", timeout=8).content
     except: return None
+
 def add_watermark(photo_bytes):
     try:
-        if not Image: return None
+        if not Image or not photo_bytes:
+            return None
         lp = find_logo()
-        if not lp: return None
+        if not lp:
+            print("logo.png not found")
+            return None
         base = Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
         logo = Image.open(lp).convert("RGBA")
-        w, h = base.size; sz = int(w*0.13); logo = logo.resize((sz, sz), Image.LANCZOS)
-        overlay = Image.new("RGBA", base.size, (0, 0, 0, 0)); overlay.paste(logo, (12, 12), logo)
+        w, h = base.size
+        if w == 0 or logo.width == 0:
+            return None
+        # FIX 18% - Jaga rasio asli, jangan resize jadi kotak
+        target_w = int(w * 0.18)
+        target_w = max(60, min(target_w, 400))
+        target_h = int(target_w * logo.height / logo.width)
+        max_h = int(h * 0.18)
+        if target_h > max_h:
+            target_h = max_h
+            target_w = int(target_h * logo.width / logo.height)
+        logo = logo.resize((target_w, target_h), Image.LANCZOS)
+        margin = max(12, int(w * 0.02))
+        overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+        overlay.paste(logo, (margin, margin), logo)
         combined = Image.alpha_composite(base, overlay).convert("RGB")
-        bio = io.BytesIO(); combined.save(bio, "JPEG", quality=85); bio.seek(0); return bio
-    except: return None
+        bio = io.BytesIO(); combined.save(bio, "JPEG", quality=88); bio.seek(0); return bio
+    except Exception as e:
+        print(f"watermark error: {e}")
+        return None
+
 def get_font(size, bold=False):
     try:
         if not Image: return None
