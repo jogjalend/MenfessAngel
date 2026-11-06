@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V114 FAST + X AUTO SHARE + X PREMIUM QRIS 100K - FORMAL ENGLISH
+# api/index.py - JogjaLend Bot Angel V115 FAST + X PREMIUM + AUTO RETWEET #jogjalend - FORMAL ENGLISH
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time, hmac, hashlib, base64, urllib.parse
 from datetime import datetime, timezone, timedelta
@@ -28,17 +28,15 @@ LOG_CHANNEL = os.getenv("LOG_CHANNEL") or CHANNEL_ID
 WIB = timezone(timedelta(hours=7))
 SEP = "●-----------------------------------------------------●"
 
-# ===== X ENV =====
 X_API_KEY = os.getenv("X_API_KEY") or ""
 X_API_SECRET = os.getenv("X_API_SECRET") or ""
 X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN") or ""
 X_ACCESS_SECRET = os.getenv("X_ACCESS_SECRET") or ""
-
-# ===== QRIS / X PREMIUM ENV =====
 QRIS_IMAGE_URL = os.getenv("QRIS_IMAGE_URL") or ""
 QRIS_TEXT = os.getenv("QRIS_TEXT") or "QRIS a.n jogjaStore, please scan the QR code above"
 X_PRICE = os.getenv("X_PRICE") or "Rp 100.000 / 30 days"
 PREMIUM_DAYS = int(os.getenv("PREMIUM_DAYS") or "30")
+RETWEET_HASHTAG = os.getenv("RETWEET_HASHTAG") or "#jogjalend"
 
 TG = requests.Session()
 TG.headers.update({"Connection": "keep-alive"})
@@ -92,6 +90,7 @@ def init_db():
         cur.execute("INSERT INTO bot_settings (key, value) VALUES ('peraturan', '1. No SARA & Pornography\n2. No spam\n3. Maximum 5 posts per day') ON CONFLICT (key) DO NOTHING")
         cur.execute("INSERT INTO bot_settings (key, value) VALUES ('approval', 'off') ON CONFLICT (key) DO NOTHING")
         cur.execute("INSERT INTO bot_settings (key, value) VALUES ('x_auto_share', 'off') ON CONFLICT (key) DO NOTHING")
+        cur.execute("INSERT INTO bot_settings (key, value) VALUES ('last_retweet_id', '0') ON CONFLICT (key) DO NOTHING")
         db.commit(); cur.close()
     except: pass
     finally: release_db(db)
@@ -124,7 +123,6 @@ def set_setting(k, v):
     except: pass
     finally: release_db(db)
 
-# ===== X - OAUTH 1.0a MANUAL =====
 def _x_oauth_header(method, url, extra_params=None):
     if not X_API_KEY or not X_API_SECRET or not X_ACCESS_TOKEN or not X_ACCESS_SECRET:
         return None
@@ -186,6 +184,62 @@ def post_to_x(text_content, photo_bytes=None):
     except Exception as e:
         print(f"X post error: {e}")
         return False
+
+# ===== AUTO RETWEET #jogjalend =====
+_X_MY_ID = None
+def _x_get_my_id():
+    global _X_MY_ID
+    if _X_MY_ID: return _X_MY_ID
+    try:
+        url = "https://api.twitter.com/2/users/me"
+        h = _x_oauth_header("GET", url)
+        r = TG.get(url, headers={"Authorization": h}, timeout=10).json()
+        _X_MY_ID = r.get("data", {}).get("id")
+        return _X_MY_ID
+    except: return None
+
+def auto_retweet_hashtag():
+    try:
+        if not X_API_KEY or not X_ACCESS_TOKEN:
+            return "X ENV not configured"
+        last_id = get_setting('last_retweet_id', '0')
+        my_id = _x_get_my_id()
+        if not my_id: return "Failed to get my X user ID"
+        # Search recent, exclude retweets and replies, exclude own tweets
+        query = f"{RETWEET_HASHTAG} -is:retweet -is:reply -from:jogjalend"
+        url = "https://api.twitter.com/2/tweets/search/recent"
+        params = {"query": query, "max_results": 10, "tweet.fields": "author_id,created_at"}
+        if last_id and last_id != "0":
+            params["since_id"] = last_id
+        h = _x_oauth_header("GET", url, params)
+        r = TG.get(url, headers={"Authorization": h}, params=params, timeout=10)
+        j = r.json()
+        if r.status_code != 200:
+            print(f"Search error: {r.status_code} {r.text[:500]}")
+            return f"Search failed {r.status_code}"
+        tweets = j.get("data", [])
+        if not tweets:
+            return "No new tweet"
+        count = 0
+        # Oldest first
+        for t in reversed(tweets):
+            tid = t["id"]
+            # Skip own tweet
+            if str(t.get("author_id")) == str(my_id):
+                continue
+            retweet_url = f"https://api.twitter.com/2/users/{my_id}/retweets"
+            h2 = _x_oauth_header("POST", retweet_url)
+            rr = TG.post(retweet_url, headers={"Authorization": h2, "Content-Type": "application/json"}, json={"tweet_id": tid}, timeout=10)
+            print(f"Retweet {tid}: {rr.status_code} {rr.text[:200]}")
+            if rr.status_code in [200, 201]:
+                count += 1
+                set_setting('last_retweet_id', tid)
+            elif rr.status_code == 403 and "already retweeted" in rr.text.lower():
+                set_setting('last_retweet_id', tid)
+        return f"Retweeted {count} / {len(tweets)}"
+    except Exception as e:
+        print(f"Retweet error: {e}")
+        return str(e)
 
 def to_fancy(text):
     if not text: return ""
@@ -278,12 +332,6 @@ def edit_message_fast(chat_id, msg_id, text, kb=None):
         return True
     except: return False
 
-def report_error(chat_id, where, error):
-    err_str = str(error)
-    if "Timeout" in err_str or "timed out" in err_str: return
-    print(f"ERROR {where}: {err_str}")
-
-# ===== QRIS / PREMIUM HELPERS =====
 def send_qris(chat_id):
     if QRIS_IMAGE_URL:
         try:
@@ -316,12 +364,15 @@ def get_menu_2():
 def get_admin_panel():
     x_on = get_setting('x_auto_share', 'off') == 'on'
     x_label = f"{'✅ ' if x_on else '❌ '}𝕏 Auto Share: {'ON' if x_on else 'OFF'}"
+    rt_on = get_setting('x_retweet', 'on') == 'on'
+    rt_label = f"{'✅ ' if rt_on else '❌ '}🔁 Auto Retweet {RETWEET_HASHTAG}: {'ON' if rt_on else 'OFF'}"
     return {"inline_keyboard": [
         [{"text": "👥 User List", "callback_data": "admin_users"}, {"text": "📊 All Stats", "callback_data": "admin_allstats"}],
         [{"text": "📢 Broadcast", "callback_data": "admin_broadcast"}, {"text": "🚫 Ban/Unban", "callback_data": "lend_blacklist"}],
         [{"text": "🎯 Channel Target", "callback_data": "lend_channel"}],
         [{"text": x_label, "callback_data": "admin_x_toggle"}],
-        [{"text": "🧪 Test Post to X", "callback_data": "admin_x_test"}],
+        [{"text": rt_label, "callback_data": "admin_rt_toggle"}],
+        [{"text": "🧪 Test Post to X", "callback_data": "admin_x_test"}, {"text": "🔁 Test Retweet", "callback_data": "admin_rt_test"}],
         [{"text": "🔗 Set Webhook", "callback_data": "admin_webhook"}, {"text": "📋 Check Logs", "callback_data": "admin_logs"}],
         [{"text": "⚙️ Bot Settings", "callback_data": "lend_page1"}],
         [{"text": "⬅️ Back", "callback_data": "back_home"}]
@@ -462,7 +513,7 @@ def send_success(chat_id, user, ch_msg_id, target="both"):
         if is_admin(chat_id) and get_setting('x_auto_share', 'off') == 'on':
             if " + X" not in note: note += " + X"
         send_message(chat_id, f"Menfess successfully sent!{note}\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5", {"inline_keyboard": buttons})
-    except Exception as e: report_error(chat_id, "send_success", e)
+    except Exception as e: print(f"send_success error: {e}")
 
 def send_user_list(chat_id):
     db = get_db()
@@ -525,6 +576,10 @@ def handle_admin_command(chat_id, text):
         ok = post_to_x(f"Test JogjaLend Bot - X Auto Share ON {datetime.now(WIB).strftime('%H:%M')}")
         send_message(chat_id, M(f"X Test: {'SUCCESSFUL ✅' if ok else 'FAILED ❌ - Please check the X ENV in Vercel / Logs'}"))
         return True
+    if text.startswith("/rt_test"):
+        res = auto_retweet_hashtag()
+        send_message(chat_id, M(f"Retweet Test: {res}"))
+        return True
     if text.startswith("/broadcast"):
         btext = text.replace("/broadcast", "").strip()
         if btext:
@@ -562,12 +617,19 @@ def webhook_info():
     except Exception as e:
         return str(e), 500
 
+@app.route("/api/cron_retweet", methods=["GET"])
+def cron_retweet():
+    if get_setting('x_retweet', 'on') != 'on':
+        return "Retweet OFF", 200
+    res = auto_retweet_hashtag()
+    return res, 200
+
 @app.route("/", methods=["GET", "POST"])
 @app.route("/api/index", methods=["GET", "POST"])
 def main_handler():
     data = {}; where = "init"
     try:
-        if request.method == "GET": return "JogjaLend Bot V114 FAST + X + QRIS OK", 200
+        if request.method == "GET": return "JogjaLend Bot V115 FAST + X + QRIS + RT OK", 200
         where = "parse_json"; data = request.get_json(force=True, silent=True) or {}
         if "message" in data:
             msg = data["message"]; chat_id = msg["chat"]["id"]; uid = str(chat_id)
@@ -668,8 +730,7 @@ def main_handler():
                 kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message_fast(chat_id, msg_id, f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend", kb)
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V114\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
-            # ===== X PREMIUM =====
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V115\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
             elif cdata == "x_premium":
                 if is_premium_active(user):
                     auto = "ON" if user.get("x_auto", True) else "OFF"
@@ -703,7 +764,7 @@ def main_handler():
                     edit_message_fast(chat_id, msg_id, f"❌ Rejected. User {target_id}", get_admin_panel())
                     send_message(target_id, f"❌ Your X Premium payment was rejected.\n{SEP}\nPlease contact the admin if you believe you have completed the transfer.", get_back_keyboard())
             elif cdata == "admin_panel":
-                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V114\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
+                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V115\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
             elif cdata == "admin_x_toggle":
                 if not is_admin(chat_id):
@@ -712,13 +773,27 @@ def main_handler():
                     cur = get_setting('x_auto_share', 'off')
                     new = 'on' if cur == 'off' else 'off'
                     set_setting('x_auto_share', new)
-                    edit_message_fast(chat_id, msg_id, M(f"X Auto Share: {new.upper()}\n------------------------------\n{'Posts from admin and Premium users will now be automatically shared to X.' if new=='on' else 'Automatic sharing to X has been disabled.'}\nPlease check the X ENV in Vercel if it fails."), get_admin_panel())
+                    edit_message_fast(chat_id, msg_id, M(f"X Auto Share: {new.upper()}\n------------------------------\n{'Posts from admin and Premium users will now be automatically shared to X.' if new=='on' else 'Automatic sharing to X has been disabled.'}"), get_admin_panel())
+            elif cdata == "admin_rt_toggle":
+                if not is_admin(chat_id):
+                    edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
+                else:
+                    cur = get_setting('x_retweet', 'on')
+                    new = 'on' if cur == 'off' else 'off'
+                    set_setting('x_retweet', new)
+                    edit_message_fast(chat_id, msg_id, M(f"Auto Retweet {RETWEET_HASHTAG}: {new.upper()}"), get_admin_panel())
             elif cdata == "admin_x_test":
                 if not is_admin(chat_id):
                     edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
                 else:
                     ok = post_to_x(f"Test JogjaLend Bot X Auto Share {datetime.now(WIB).strftime('%H:%M')}")
                     edit_message_fast(chat_id, msg_id, M(f"X Test: {'SUCCESSFUL ✅ - Please check your X account' if ok else 'FAILED ❌ - Please check the X ENV / Basic Plan / Vercel Logs'}"), get_admin_panel())
+            elif cdata == "admin_rt_test":
+                if not is_admin(chat_id):
+                    edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
+                else:
+                    res = auto_retweet_hashtag()
+                    edit_message_fast(chat_id, msg_id, M(f"Retweet Test: {res}"), get_admin_panel())
             elif cdata == "lend_tag":
                 edit_message_fast(chat_id, msg_id, M(f"Current Tag: {HASHTAG}\n------------------------------\nTo change it, use the command:\n/settag #newtag"), get_menu_1())
             elif cdata == "lend_persetujuan":
@@ -747,7 +822,7 @@ def main_handler():
                 else: kb = get_menu_2()
                 edit_message_fast(chat_id, msg_id, M(txt), kb)
             elif cdata == "lend_izin": edit_message_fast(chat_id, msg_id, M("Permissions\n------------------------------\nAll users may post text/media (maximum 5). Admins may ban or warn users. Please edit the code to limit links."), get_menu_2())
-            elif cdata == "lend_log": edit_message_fast(chat_id, msg_id, M(f"Channel Log\n------------------------------\nLog Channel: {LOG_CHANNEL}\nErrors and approvals will be sent here.\nTo change, update the LOG_CHANNEL env."), get_menu_2())
+            elif cdata == "lend_log": edit_message_fast(chat_id, msg_id, M(f"Channel Log\n------------------------------\nLog Channel: {LOG_CHANNEL}\nErrors and approvals will be sent here."), get_menu_2())
             elif cdata == "lend_channel":
                 if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M(f"Channel Management\n------------------------------\nPlease select a posting target.\nCurrent: {user.get('admin_target','both').upper()}"), get_channel_target_keyboard(user))
                 else: edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
