@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - FIXED 20% POJOK
+# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - FIXED 20% TRANSPARAN POJOK
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time
 from datetime import datetime, timezone, timedelta
@@ -235,7 +235,7 @@ def get_channel_target_keyboard(user):
         [{"text": "⬅️ Kembali", "callback_data": "admin_panel"}]
     ]}
 
-# ===== FIXED: LOGO / WATERMARK 20% NEMPEL POJOK =====
+# ===== FIXED: LOGO TRANSPARAN LURUS 20% NEMPEL POJOK KIRI ATAS =====
 def find_logo():
     base_dir = os.path.dirname(__file__)
     candidates = [
@@ -268,10 +268,14 @@ def add_watermark(photo_bytes):
             return None
         base = Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
         logo = Image.open(lp).convert("RGBA")
+        # Logo udah transparan, tinggal potong padding transparan biar nempel ujung
+        bbox = logo.getbbox()
+        if bbox:
+            logo = logo.crop(bbox)
         w, h = base.size
         if w == 0 or logo.width == 0:
             return None
-        # FIX 20% - Jaga rasio asli, jangan resize jadi kotak
+        # FIX 20% - Jaga rasio asli
         target_w = int(w * 0.20)
         target_w = max(60, min(target_w, 400))
         target_h = int(target_w * logo.height / logo.width)
@@ -280,8 +284,8 @@ def add_watermark(photo_bytes):
             target_h = max_h
             target_w = int(target_h * logo.width / logo.height)
         logo = logo.resize((target_w, target_h), Image.LANCZOS)
-        # FIX POJOK - dari 2% jadi 0.8% biar nempel pojok kiri atas
-        margin = max(4, int(w * 0.008))
+        # FIX POJOK - margin 0, nempel ujung kiri atas
+        margin = 0
         overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
         overlay.paste(logo, (margin, margin), logo)
         combined = Image.alpha_composite(base, overlay).convert("RGB")
