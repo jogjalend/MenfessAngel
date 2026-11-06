@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - FIXED 18%
+# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - FIXED 20%
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time
 from datetime import datetime, timezone, timedelta
@@ -101,7 +101,7 @@ def M(t):
         if line.strip() == "":
             out.append("")
         elif "http" in line or "@" in line or "tg://" in line or line.strip().startswith("/"):
-            out.append(line)
+            out.append(f"<code>{line}</code>" if False else line)
         else:
             out.append(f"<code>{line}</code>")
     return "\n".join(out)
@@ -235,7 +235,7 @@ def get_channel_target_keyboard(user):
         [{"text": "⬅️ Kembali", "callback_data": "admin_panel"}]
     ]}
 
-# ===== FIXED: LOGO / WATERMARK 18% =====
+# ===== FIXED: LOGO / WATERMARK 20% =====
 def find_logo():
     base_dir = os.path.dirname(__file__)
     candidates = [
@@ -271,11 +271,11 @@ def add_watermark(photo_bytes):
         w, h = base.size
         if w == 0 or logo.width == 0:
             return None
-        # FIX 18% - Jaga rasio asli, jangan resize jadi kotak
-        target_w = int(w * 0.18)
+        # FIX 20% - Jaga rasio asli, jangan resize jadi kotak
+        target_w = int(w * 0.20)
         target_w = max(60, min(target_w, 400))
         target_h = int(target_w * logo.height / logo.width)
-        max_h = int(h * 0.18)
+        max_h = int(h * 0.20)
         if target_h > max_h:
             target_h = max_h
             target_w = int(target_h * logo.width / logo.height)
