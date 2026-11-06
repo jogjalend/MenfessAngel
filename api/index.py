@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V112.0 FAST + X AUTO SHARE ADMIN ONLY
+# api/index.py - JogjaLend Bot Angel V112.0 FAST + X AUTO SHARE ADMIN ONLY - FIXED V2
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time, hmac, hashlib, base64, urllib.parse
 from datetime import datetime, timezone, timedelta
@@ -132,7 +132,6 @@ def _x_oauth_header(method, url, extra_params=None):
     all_params = dict(oauth)
     if extra_params:
         all_params.update(extra_params)
-    # Signature base string
     sorted_params = sorted(all_params.items())
     param_str = "&".join(f"{urllib.parse.quote(str(k), safe='')}={urllib.parse.quote(str(v), safe='')}" for k,v in sorted_params)
     base = f"{method.upper()}&{urllib.parse.quote(url, safe='')}&{urllib.parse.quote(param_str, safe='')}"
@@ -155,31 +154,29 @@ def _x_upload_media(photo_bytes):
         print(f"X upload error: {e}")
         return None
 
+# ===== FIXED: Pake v2, bukan v1.1 lagi (v1.1 = 404) =====
 def post_to_x(text_content, photo_bytes=None):
-    # Cuma dipanggil kalau admin + x_auto_share ON
     try:
         if not X_API_KEY or not X_API_SECRET or not X_ACCESS_TOKEN or not X_ACCESS_SECRET:
             print("X ENV belum diisi")
             return False
-        # Bersihin tag HTML Telegram biar gak ikut ke X
         clean = re.sub(r"<[^>]+>", "", text_content or "").strip()
         if not clean:
             return False
-        # X limit 280 char, potong kalau kepanjangan
         if len(clean) > 280:
             clean = clean[:277] + "..."
         media_id = None
         if photo_bytes:
             media_id = _x_upload_media(photo_bytes)
-        url = "https://api.twitter.com/1.1/statuses/update.json"
-        params = {"status": clean}
-        if media_id:
-            params["media_ids"] = media_id
-        header = _x_oauth_header("POST", url, params)
+        url = "https://api.twitter.com/2/tweets"
+        header = _x_oauth_header("POST", url, None)
         if not header: return False
-        r = TG.post(url, headers={"Authorization": header}, data=params, timeout=10)
+        payload = {"text": clean}
+        if media_id:
+            payload["media"] = {"media_ids": [media_id]}
+        r = TG.post(url, headers={"Authorization": header, "Content-Type": "application/json"}, json=payload, timeout=10)
         print(f"X post: {r.status_code} {r.text[:300]}")
-        return r.status_code == 200
+        return r.status_code in [200, 201]
     except Exception as e:
         print(f"X post error: {e}")
         return False
@@ -286,7 +283,6 @@ def get_menu_1():
 def get_menu_2():
     return {"inline_keyboard": [[{"text": "📜 Peraturan", "callback_data": "lend_peraturan"}], [{"text": "⚠️ Peringatan", "callback_data": "lend_peringatan"}], [{"text": "🚫 Daftar Hitam", "callback_data": "lend_blacklist"}], [{"text": "🔐 Perizinan", "callback_data": "lend_izin"}, {"text": "📋 Log Saluran", "callback_data": "lend_log"}], [{"text": "🎯 Manajemen Channel", "callback_data": "lend_channel"}], [{"text": "⬅️ Kembali", "callback_data": "lend_page1"}, {"text": "❌ Tutup", "callback_data": "close"}]]}
 
-# ===== ADMIN PANEL + TOMBOL X =====
 def get_admin_panel():
     x_on = get_setting('x_auto_share', 'off') == 'on'
     x_label = f"{'✅ ' if x_on else '❌ '}𝕏 Auto Share: {'ON' if x_on else 'OFF'}"
@@ -431,7 +427,6 @@ def send_success(chat_id, user, ch_msg_id, target="both"):
         if ch_msg_id: buttons.append([{"text": "Delete", "callback_data": f"del_{ch_msg_id}"}])
         buttons.append([{"text": "Back", "callback_data": "back_home"}])
         note = f" -> {target.upper()}" if is_admin(chat_id) else ""
-        # Info tambahan kalau X ON
         if is_admin(chat_id) and get_setting('x_auto_share', 'off') == 'on':
             note += " + X"
         send_message(chat_id, f"Menfess sent!{note}\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5", {"inline_keyboard": buttons})
@@ -570,7 +565,6 @@ def main_handler():
                             r = TG.post(f"{BASE_TG}/sendMessage", json={"chat_id": CHANNEL_ID, "text": clean, "parse_mode": "HTML"}, timeout=3).json()
                             ch_id = r.get("result", {}).get("message_id")
                         if target in ["threads", "both"]: post_to_threads(clean)
-                        # ===== X AUTO SHARE - ADMIN ONLY =====
                         if is_admin(chat_id) and get_setting('x_auto_share', 'off') == 'on':
                             post_to_x(clean)
                         user["today_text"] += 1; user["total_text"] += 1; user["total_chars"] = user.get("total_chars", 0)+len(text)
@@ -596,7 +590,6 @@ def main_handler():
                             else:
                                 r = TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
                         if target in ["threads", "both"]: post_to_threads(base_cap)
-                        # ===== X AUTO SHARE - ADMIN ONLY - FOTO PAKAI WATERMARK =====
                         if is_admin(chat_id) and get_setting('x_auto_share', 'off') == 'on':
                             if is_photo and wm_bytes:
                                 post_to_x(base_cap, wm_bytes)
