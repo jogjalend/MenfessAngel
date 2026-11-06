@@ -1,6 +1,6 @@
-# api/index.py - JogjaLend Bot Angel V111.0 FAST - Cache + Session + Preload Logo
+# api/index.py - JogjaLend Bot Angel V112.0 FAST + X AUTO SHARE ADMIN ONLY
 from flask import Flask, request, jsonify
-import os, requests, io, random, re, traceback, copy, time
+import os, requests, io, random, re, traceback, copy, time, hmac, hashlib, base64, urllib.parse
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 
@@ -28,7 +28,12 @@ LOG_CHANNEL = os.getenv("LOG_CHANNEL") or CHANNEL_ID
 WIB = timezone(timedelta(hours=7))
 SEP = "●-----------------------------------------------------●"
 
-# ===== FIX 1: SESSION + CACHE GLOBAL (Hidup selama container hidup) =====
+# ===== X ENV - ISI DI VERCEL =====
+X_API_KEY = os.getenv("X_API_KEY") or ""
+X_API_SECRET = os.getenv("X_API_SECRET") or ""
+X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN") or ""
+X_ACCESS_SECRET = os.getenv("X_ACCESS_SECRET") or ""
+
 TG = requests.Session()
 TG.headers.update({"Connection": "keep-alive"})
 BASE_TG = f"https://api.telegram.org/bot{BOT_TOKEN}"
@@ -37,14 +42,12 @@ SETTINGS_CACHE = {}
 SETTINGS_CACHE_TIME = 0
 USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0, "admin_target": "both", "warn": 0})
 
-# ===== FIX 2: CONNECTION POOL, BUKAN CONNECT TIAP REQUEST =====
 _db_pool = None
 def get_pool():
     global _db_pool
     if _db_pool or not DATABASE_URL or not pool:
         return _db_pool
     try:
-        # Pakai pooler Supabase / Neon (port 6543) biar cepet
         _db_pool = pool.SimpleConnectionPool(1, 5, DATABASE_URL, connect_timeout=2)
     except:
         _db_pool = None
@@ -53,38 +56,27 @@ def get_pool():
 def get_db():
     p = get_pool()
     if p:
-        try:
-            return p.getconn()
-        except:
-            return None
-    if not DATABASE_URL or not psycopg2:
-        return None
-    try:
-        return psycopg2.connect(DATABASE_URL, connect_timeout=2)
-    except:
-        return None
+        try: return p.getconn()
+        except: return None
+    if not DATABASE_URL or not psycopg2: return None
+    try: return psycopg2.connect(DATABASE_URL, connect_timeout=2)
+    except: return None
 
 def release_db(db):
-    if not db:
-        return
+    if not db: return
     p = get_pool()
     try:
-        if p:
-            p.putconn(db)
-        else:
-            db.close()
-    except:
-        pass
+        if p: p.putconn(db)
+        else: db.close()
+    except: pass
 
 _db_init_done = False
 def init_db():
     global _db_init_done
-    if _db_init_done:
-        return
+    if _db_init_done: return
     _db_init_done = True
     db = get_db()
-    if not db:
-        return
+    if not db: return
     try:
         cur = db.cursor()
         cur.execute("CREATE TABLE IF NOT EXISTS menfess_users (user_id TEXT PRIMARY KEY, name TEXT, username TEXT, threads_on BOOLEAN DEFAULT FALSE, today_text INT DEFAULT 0, today_media INT DEFAULT 0, last_date TEXT, banned BOOLEAN DEFAULT FALSE, total_text INT DEFAULT 0, total_media INT DEFAULT 0, total_chars INT DEFAULT 0, admin_target TEXT DEFAULT 'both', warn INT DEFAULT 0)")
@@ -92,55 +84,108 @@ def init_db():
         cur.execute("INSERT INTO bot_settings (key, value) VALUES ('hashtag', '#jogjalend') ON CONFLICT (key) DO NOTHING")
         cur.execute("INSERT INTO bot_settings (key, value) VALUES ('peraturan', '1. No SARA & Porn\n2. No spam\n3. Max 5 post/hari') ON CONFLICT (key) DO NOTHING")
         cur.execute("INSERT INTO bot_settings (key, value) VALUES ('approval', 'off') ON CONFLICT (key) DO NOTHING")
+        cur.execute("INSERT INTO bot_settings (key, value) VALUES ('x_auto_share', 'off') ON CONFLICT (key) DO NOTHING")
         db.commit(); cur.close()
-    except:
-        pass
-    finally:
-        release_db(db)
+    except: pass
+    finally: release_db(db)
 
-# Panggil sekali pas cold start, bukan tiap webhook
-try:
-    init_db()
-except:
-    pass
+try: init_db()
+except: pass
 
 def get_setting(k, default=""):
     global SETTINGS_CACHE_TIME
-    # Cache 60 detik, cukup buat ngebut tapi tetap bisa di-update
     if k in SETTINGS_CACHE and (time.time() - SETTINGS_CACHE_TIME < 60):
         return SETTINGS_CACHE[k]
     db = get_db()
-    if not db:
-        return SETTINGS_CACHE.get(k, default)
+    if not db: return SETTINGS_CACHE.get(k, default)
     try:
         cur = db.cursor(); cur.execute("SELECT value FROM bot_settings WHERE key=%s", (k,)); r = cur.fetchone(); cur.close()
         val = r[0] if r else default
-        SETTINGS_CACHE[k] = val
-        SETTINGS_CACHE_TIME = time.time()
+        SETTINGS_CACHE[k] = val; SETTINGS_CACHE_TIME = time.time()
         return val
-    except:
-        return SETTINGS_CACHE.get(k, default)
-    finally:
-        release_db(db)
+    except: return SETTINGS_CACHE.get(k, default)
+    finally: release_db(db)
 
 def set_setting(k, v):
     SETTINGS_CACHE[k] = v
     global SETTINGS_CACHE_TIME
     SETTINGS_CACHE_TIME = time.time()
     db = get_db()
-    if not db:
-        return
+    if not db: return
     try:
         cur = db.cursor(); cur.execute("INSERT INTO bot_settings (key,value) VALUES (%s,%s) ON CONFLICT (key) DO UPDATE SET value=%s", (k, v, v)); db.commit(); cur.close()
-    except:
-        pass
-    finally:
-        release_db(db)
+    except: pass
+    finally: release_db(db)
+
+# ===== X - OAUTH 1.0a MANUAL (No tweepy needed) =====
+def _x_oauth_header(method, url, extra_params=None):
+    if not X_API_KEY or not X_API_SECRET or not X_ACCESS_TOKEN or not X_ACCESS_SECRET:
+        return None
+    oauth = {
+        "oauth_consumer_key": X_API_KEY,
+        "oauth_nonce": base64.b64encode(os.urandom(32)).decode()[:32].replace("+","a").replace("/","b"),
+        "oauth_signature_method": "HMAC-SHA1",
+        "oauth_timestamp": str(int(time.time())),
+        "oauth_token": X_ACCESS_TOKEN,
+        "oauth_version": "1.0",
+    }
+    all_params = dict(oauth)
+    if extra_params:
+        all_params.update(extra_params)
+    # Signature base string
+    sorted_params = sorted(all_params.items())
+    param_str = "&".join(f"{urllib.parse.quote(str(k), safe='')}={urllib.parse.quote(str(v), safe='')}" for k,v in sorted_params)
+    base = f"{method.upper()}&{urllib.parse.quote(url, safe='')}&{urllib.parse.quote(param_str, safe='')}"
+    signing_key = f"{urllib.parse.quote(X_API_SECRET, safe='')}&{urllib.parse.quote(X_ACCESS_SECRET, safe='')}"
+    sig = base64.b64encode(hmac.new(signing_key.encode(), base.encode(), hashlib.sha1).digest()).decode()
+    oauth["oauth_signature"] = sig
+    header = "OAuth " + ", ".join(f'{k}="{urllib.parse.quote(str(v), safe="")}"' for k,v in sorted(oauth.items()))
+    return header
+
+def _x_upload_media(photo_bytes):
+    try:
+        url = "https://upload.twitter.com/1.1/media/upload.json"
+        header = _x_oauth_header("POST", url)
+        if not header: return None
+        files = {"media": ("img.jpg", photo_bytes, "image/jpeg")}
+        r = TG.post(url, headers={"Authorization": header}, files=files, timeout=10)
+        j = r.json()
+        return j.get("media_id_string")
+    except Exception as e:
+        print(f"X upload error: {e}")
+        return None
+
+def post_to_x(text_content, photo_bytes=None):
+    # Cuma dipanggil kalau admin + x_auto_share ON
+    try:
+        if not X_API_KEY or not X_API_SECRET or not X_ACCESS_TOKEN or not X_ACCESS_SECRET:
+            print("X ENV belum diisi")
+            return False
+        # Bersihin tag HTML Telegram biar gak ikut ke X
+        clean = re.sub(r"<[^>]+>", "", text_content or "").strip()
+        if not clean:
+            return False
+        # X limit 280 char, potong kalau kepanjangan
+        if len(clean) > 280:
+            clean = clean[:277] + "..."
+        media_id = None
+        if photo_bytes:
+            media_id = _x_upload_media(photo_bytes)
+        url = "https://api.twitter.com/1.1/statuses/update.json"
+        params = {"status": clean}
+        if media_id:
+            params["media_ids"] = media_id
+        header = _x_oauth_header("POST", url, params)
+        if not header: return False
+        r = TG.post(url, headers={"Authorization": header}, data=params, timeout=10)
+        print(f"X post: {r.status_code} {r.text[:300]}")
+        return r.status_code == 200
+    except Exception as e:
+        print(f"X post error: {e}")
+        return False
 
 def to_fancy(text):
-    if not text:
-        return ""
-    # Optimasi: pre-compile regex sekali
+    if not text: return ""
     pattern = r'<plain>.*?</plain>|<code>.*?</code>|<pre>.*?</pre>|<a[^>]*>.*?</a>|<[^>]+>|@\w+|#\w+|/\w+|https?://\S+|threads\.net/\S+|t\.me/\S+'
     res_parts = []; last_idx = 0
     for m in re.finditer(pattern, text, flags=re.DOTALL):
@@ -155,12 +200,9 @@ def F(t): return to_fancy(t)
 def M(t):
     out = []
     for line in t.split("\n"):
-        if line.strip() == "":
-            out.append("")
-        elif "http" in line or "@" in line or "tg://" in line or line.strip().startswith("/"):
-            out.append(line)
-        else:
-            out.append(f"<code>{line}</code>")
+        if line.strip() == "": out.append("")
+        elif "http" in line or "@" in line or "tg://" in line or line.strip().startswith("/"): out.append(line)
+        else: out.append(f"<code>{line}</code>")
     return "\n".join(out)
 
 def load_user_from_db(uid):
@@ -187,14 +229,12 @@ def save_user_to_db(uid, user):
 
 def get_user(uid):
     u = USERS[uid]
-    # Cuma load dari DB kalau belum pernah di-load di container ini
     if u["last_date"] == "" and uid not in USERS or (u["name"] == "" and DATABASE_URL):
         d = load_user_from_db(uid)
         if d: USERS[uid] = d; u = USERS[uid]
     today = datetime.now(WIB).strftime("%Y-%m-%d")
     if u["last_date"] != today:
         u["today_text"] = 0; u["today_media"] = 0; u["last_date"] = today
-        # Jangan save langsung di sini, biarin save pas user post aja
     return u
 
 def is_admin(uid): return str(uid) in ADMIN_ID.split(",") if ADMIN_ID else False
@@ -211,8 +251,7 @@ def send_message(chat_id, text, kb=None):
         if kb_fancy: payload["reply_markup"] = kb_fancy
         r = TG.post(f"{BASE_TG}/sendMessage", json=payload, timeout=3)
         return r.status_code == 200
-    except:
-        return False
+    except: return False
 
 def edit_message_fast(chat_id, msg_id, text, kb=None):
     try:
@@ -226,14 +265,12 @@ def edit_message_fast(chat_id, msg_id, text, kb=None):
         if kb_fancy: payload["reply_markup"] = kb_fancy
         TG.post(f"{BASE_TG}/editMessageText", json=payload, timeout=3)
         return True
-    except:
-        return False
+    except: return False
 
 def report_error(chat_id, where, error):
     err_str = str(error)
     if "Timeout" in err_str or "timed out" in err_str: return
     print(f"ERROR {where}: {err_str}")
-    # Jangan kirim ke LOG_CHANNEL tiap error kecil, bikin antrian
 
 def get_welcome_text(user):
     hashtag = get_setting('hashtag', '#jogjalend')
@@ -248,30 +285,40 @@ def get_menu_1():
     return {"inline_keyboard": [[{"text": "🔔 Tag", "callback_data": "lend_tag"}], [{"text": "📥 Mode Persetujuan", "callback_data": "lend_persetujuan"}], [{"text": "🗑️ Menghapus Pesan", "callback_data": "lend_hapus"}], [{"text": "🇮🇩 Lang", "callback_data": "lend_lang"}, {"text": "✅ Tutup", "callback_data": "close"}], [{"text": "▶️ Lainnya", "callback_data": "lend_page2"}]]}
 def get_menu_2():
     return {"inline_keyboard": [[{"text": "📜 Peraturan", "callback_data": "lend_peraturan"}], [{"text": "⚠️ Peringatan", "callback_data": "lend_peringatan"}], [{"text": "🚫 Daftar Hitam", "callback_data": "lend_blacklist"}], [{"text": "🔐 Perizinan", "callback_data": "lend_izin"}, {"text": "📋 Log Saluran", "callback_data": "lend_log"}], [{"text": "🎯 Manajemen Channel", "callback_data": "lend_channel"}], [{"text": "⬅️ Kembali", "callback_data": "lend_page1"}, {"text": "❌ Tutup", "callback_data": "close"}]]}
+
+# ===== ADMIN PANEL + TOMBOL X =====
 def get_admin_panel():
-    return {"inline_keyboard": [[{"text": "👥 List User", "callback_data": "admin_users"}, {"text": "📊 All Stats", "callback_data": "admin_allstats"}], [{"text": "📢 Broadcast", "callback_data": "admin_broadcast"}, {"text": "🚫 Ban/Unban", "callback_data": "lend_blacklist"}], [{"text": "🎯 Target Channel", "callback_data": "lend_channel"}], [{"text": "🔗 Set Webhook", "callback_data": "admin_webhook"}, {"text": "📋 Cek Logs", "callback_data": "admin_logs"}], [{"text": "⚙️ Pengaturan Bot", "callback_data": "lend_page1"}], [{"text": "⬅️ Kembali", "callback_data": "back_home"}]]}
+    x_on = get_setting('x_auto_share', 'off') == 'on'
+    x_label = f"{'✅ ' if x_on else '❌ '}𝕏 Auto Share: {'ON' if x_on else 'OFF'}"
+    return {"inline_keyboard": [
+        [{"text": "👥 List User", "callback_data": "admin_users"}, {"text": "📊 All Stats", "callback_data": "admin_allstats"}],
+        [{"text": "📢 Broadcast", "callback_data": "admin_broadcast"}, {"text": "🚫 Ban/Unban", "callback_data": "lend_blacklist"}],
+        [{"text": "🎯 Target Channel", "callback_data": "lend_channel"}],
+        [{"text": x_label, "callback_data": "admin_x_toggle"}],
+        [{"text": "🧪 Tes Post ke X", "callback_data": "admin_x_test"}],
+        [{"text": "🔗 Set Webhook", "callback_data": "admin_webhook"}, {"text": "📋 Cek Logs", "callback_data": "admin_logs"}],
+        [{"text": "⚙️ Pengaturan Bot", "callback_data": "lend_page1"}],
+        [{"text": "⬅️ Kembali", "callback_data": "back_home"}]
+    ]}
+
 def get_channel_target_keyboard(user):
     target = user.get("admin_target", "both")
     return {"inline_keyboard": [[{"text": f"📍 Target: {target.upper()}", "callback_data": "admin_noop"}], [{"text": f"{'✅ ' if target=='channel' else ''}📢 Channel Only", "callback_data": "admin_set_channel"}, {"text": f"{'✅ ' if target=='threads' else ''}🧵 Threads Only", "callback_data": "admin_set_threads"}], [{"text": f"{'✅ ' if target=='both' else ''}🚀 Both (Channel+Threads)", "callback_data": "admin_set_both"}], [{"text": "⬅️ Kembali", "callback_data": "admin_panel"}]]}
 
-# ===== FIX 3: LOGO PRELOAD SEKALI =====
 _LOGO_CACHED = None
 def get_logo_cached():
     global _LOGO_CACHED
-    if _LOGO_CACHED is not None:
-        return _LOGO_CACHED
+    if _LOGO_CACHED is not None: return _LOGO_CACHED
     base_dir = os.path.dirname(__file__)
     for p in [os.path.join(base_dir, "logo.png"), "logo.png", os.path.join(os.getcwd(), "api/logo.png")]:
         if os.path.exists(p):
             try:
                 logo = Image.open(p).convert("RGBA")
                 bbox = logo.getbbox()
-                if bbox:
-                    logo = logo.crop(bbox)
+                if bbox: logo = logo.crop(bbox)
                 _LOGO_CACHED = logo
                 return logo
-            except:
-                return None
+            except: return None
     return None
 
 def download_file(file_id):
@@ -283,21 +330,17 @@ def download_file(file_id):
 
 def add_watermark(photo_bytes):
     try:
-        if not Image or not photo_bytes:
-            return None
+        if not Image or not photo_bytes: return None
         logo_orig = get_logo_cached()
-        if not logo_orig:
-            return None
+        if not logo_orig: return None
         base = Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
         logo = logo_orig.copy()
         w, h = base.size
-        target_w = int(w * 0.20)
-        target_w = max(60, min(target_w, 400))
+        target_w = int(w * 0.20); target_w = max(60, min(target_w, 400))
         target_h = int(target_w * logo.height / logo.width)
         max_h = int(h * 0.20)
         if target_h > max_h:
-            target_h = max_h
-            target_w = int(target_h * logo.width / logo.height)
+            target_h = max_h; target_w = int(target_h * logo.width / logo.height)
         logo = logo.resize((target_w, target_h), Image.LANCZOS)
         margin = max(10, int(w * 0.015))
         overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
@@ -305,8 +348,7 @@ def add_watermark(photo_bytes):
         combined = Image.alpha_composite(base, overlay).convert("RGB")
         bio = io.BytesIO(); combined.save(bio, "JPEG", quality=82, optimize=True); bio.seek(0); return bio
     except Exception as e:
-        print(f"watermark error: {e}")
-        return None
+        print(f"watermark error: {e}"); return None
 
 def get_font(size, bold=False):
     try:
@@ -363,8 +405,7 @@ def send_stats(chat_id, user, mode="today"):
             try:
                 r = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": chat_id, "caption": cap}, files={"photo": ("s.jpg", chart, "image/jpeg")}, timeout=5).json()
                 if r.get("ok"):
-                    send_message(chat_id, "Switch mode:", kb)
-                    return
+                    send_message(chat_id, "Switch mode:", kb); return
             except: pass
         send_message(chat_id, cap, kb)
     except: pass
@@ -390,30 +431,28 @@ def send_success(chat_id, user, ch_msg_id, target="both"):
         if ch_msg_id: buttons.append([{"text": "Delete", "callback_data": f"del_{ch_msg_id}"}])
         buttons.append([{"text": "Back", "callback_data": "back_home"}])
         note = f" -> {target.upper()}" if is_admin(chat_id) else ""
+        # Info tambahan kalau X ON
+        if is_admin(chat_id) and get_setting('x_auto_share', 'off') == 'on':
+            note += " + X"
         send_message(chat_id, f"Menfess sent!{note}\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5", {"inline_keyboard": buttons})
     except Exception as e: report_error(chat_id, "send_success", e)
 
 def send_user_list(chat_id):
     db = get_db()
     if not db:
-        send_message(chat_id, "DB belum connect")
-        return
+        send_message(chat_id, "DB belum connect"); return
     try:
         cur = db.cursor()
         cur.execute("SELECT user_id, name, username, total_text+total_media as total, banned FROM menfess_users ORDER BY total DESC")
         rows = cur.fetchall(); cur.close()
         back_kb = {"inline_keyboard": [[{"text": "Back", "callback_data": "admin_panel"}]]}
         if not rows:
-            send_message(chat_id, M("Belum ada user."), back_kb)
-            return
+            send_message(chat_id, M("Belum ada user."), back_kb); return
         header = M(f"Total User: {len(rows)}\n------------------------------\nSemua Member:")
         txt = header + "\n"
         for i, r in enumerate(rows, 1):
             status = " BANNED" if r[4] else ""
-            if r[2]:
-                display = f"<a href=\"tg://user?id={r[0]}\">@{r[2]}</a>"
-            else:
-                display = f"<a href=\"tg://user?id={r[0]}\">{r[0]}</a>"
+            display = f"<a href=\"tg://user?id={r[0]}\">@{r[2]}</a>" if r[2] else f"<a href=\"tg://user?id={r[0]}\">{r[0]}</a>"
             line = f"{i}. {display} - {r[0]} ({r[3]}){status}\n"
             if len(txt) + len(line) > 3200:
                 send_message(chat_id, txt, back_kb)
@@ -422,15 +461,13 @@ def send_user_list(chat_id):
         send_message(chat_id, txt, back_kb)
     except Exception as e:
         send_message(chat_id, f"Gagal ambil list: {e}")
-    finally:
-        release_db(db)
+    finally: release_db(db)
 
 def handle_admin_command(chat_id, text):
     if text.startswith("/clearmenu"):
         TG.post(f"{BASE_TG}/setChatMenuButton", json={"menu_button": {"type": "default"}}, timeout=3)
         TG.post(f"{BASE_TG}/deleteMyCommands", json={}, timeout=3)
-        send_message(chat_id, "Menu button & commands dibersihkan")
-        return True
+        send_message(chat_id, "Menu button & commands dibersihkan"); return True
     if text.startswith("/ban"):
         parts = text.split()
         if len(parts) >= 2:
@@ -456,6 +493,10 @@ def handle_admin_command(chat_id, text):
         nt = text.replace("/setperaturan", "").strip()
         if nt: set_setting('peraturan', nt); send_message(chat_id, M("Peraturan diupdate"))
         return True
+    if text.startswith("/x_test"):
+        ok = post_to_x(f"Test JogjaLend Bot - X Auto Share ON {datetime.now(WIB).strftime('%H:%M')}")
+        send_message(chat_id, M(f"X Test: {'BERHASIL ✅' if ok else 'GAGAL ❌ - Cek ENV X di Vercel / Log'}"))
+        return True
     if text.startswith("/broadcast"):
         btext = text.replace("/broadcast", "").strip()
         if btext:
@@ -466,13 +507,11 @@ def handle_admin_command(chat_id, text):
                 send_message(chat_id, M(f"Broadcast terkirim ke {len(rows)} user"))
         return True
     if text.startswith("/users"):
-        send_user_list(chat_id)
-        return True
+        send_user_list(chat_id); return True
     if text.startswith("/setwebhook"):
         host = request.host_url.rstrip('/'); wh = f"{host}/api/index"
         r = TG.get(f"{BASE_TG}/setWebhook", params={"url": wh}, timeout=3).json()
-        send_message(chat_id, M(f"Webhook: {wh}\nResult: {r}"))
-        return True
+        send_message(chat_id, M(f"Webhook: {wh}\nResult: {r}")); return True
     return False
 
 @app.route("/setwebhook", methods=["GET"])
@@ -500,7 +539,7 @@ def webhook_info():
 def main_handler():
     data = {}; where = "init"
     try:
-        if request.method == "GET": return "JogjaLend Bot V111.0 FAST OK", 200
+        if request.method == "GET": return "JogjaLend Bot V112.0 FAST + X OK", 200
         where = "parse_json"; data = request.get_json(force=True, silent=True) or {}
         if "message" in data:
             msg = data["message"]; chat_id = msg["chat"]["id"]; uid = str(chat_id)
@@ -531,6 +570,9 @@ def main_handler():
                             r = TG.post(f"{BASE_TG}/sendMessage", json={"chat_id": CHANNEL_ID, "text": clean, "parse_mode": "HTML"}, timeout=3).json()
                             ch_id = r.get("result", {}).get("message_id")
                         if target in ["threads", "both"]: post_to_threads(clean)
+                        # ===== X AUTO SHARE - ADMIN ONLY =====
+                        if is_admin(chat_id) and get_setting('x_auto_share', 'off') == 'on':
+                            post_to_x(clean)
                         user["today_text"] += 1; user["total_text"] += 1; user["total_chars"] = user.get("total_chars", 0)+len(text)
                         save_user_to_db(uid, user); send_success(chat_id, user, ch_id, target)
                 if "photo" in msg or "video" in msg:
@@ -542,13 +584,24 @@ def main_handler():
                         if HASHTAG.lower() not in base_cap.lower(): base_cap = f"{base_cap} {HASHTAG}"
                         target = user.get("admin_target", "both") if is_admin(chat_id) else ("both" if user.get("threads_on") else "channel")
                         ch_id = None
+                        wm_bytes = None
                         if target in ["channel", "both"]:
                             if is_photo:
                                 raw = download_file(fid); wm = add_watermark(raw) if raw else None
-                                if wm: r = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": base_cap, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", wm, "image/jpeg")}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
-                                else: r = TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=3).json(); ch_id = r.get("result", {}).get("message_id")
-                            else: r = TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
+                                if wm:
+                                    wm.seek(0); wm_bytes = wm.read(); wm.seek(0)
+                                    r = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": base_cap, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", wm, "image/jpeg")}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
+                                else:
+                                    r = TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=3).json(); ch_id = r.get("result", {}).get("message_id")
+                            else:
+                                r = TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
                         if target in ["threads", "both"]: post_to_threads(base_cap)
+                        # ===== X AUTO SHARE - ADMIN ONLY - FOTO PAKAI WATERMARK =====
+                        if is_admin(chat_id) and get_setting('x_auto_share', 'off') == 'on':
+                            if is_photo and wm_bytes:
+                                post_to_x(base_cap, wm_bytes)
+                            elif not is_photo:
+                                post_to_x(base_cap)
                         user["today_media"] += 1; user["total_media"] += 1
                         save_user_to_db(uid, user); send_success(chat_id, user, ch_id, target)
         if "callback_query" in data:
@@ -576,10 +629,24 @@ def main_handler():
                 kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message_fast(chat_id, msg_id, f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend", kb)
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n<pre>Versi Bot : V111.0\nDatabase  : PostgreSQL</pre>\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis di @joglendsupportBot", get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot adalah bot yang dikembangkan oleh tim @jogja_lend.\n<pre>Versi Bot : V112.0\nDatabase  : PostgreSQL</pre>\nUntuk pertanyaan tentang penggunaan bot, saran untuk fitur baru atau laporan bug Anda dapat menulis di @joglendsupportBot", get_back_keyboard())
             elif cdata == "admin_panel":
-                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V111.0\n------------------------------\nPilih menu admin:"), get_admin_panel())
+                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V112.0\n------------------------------\nPilih menu admin:"), get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, M("Not admin"), get_back_keyboard())
+            elif cdata == "admin_x_toggle":
+                if not is_admin(chat_id):
+                    edit_message_fast(chat_id, msg_id, M("Not admin"), get_back_keyboard())
+                else:
+                    cur = get_setting('x_auto_share', 'off')
+                    new = 'on' if cur == 'off' else 'off'
+                    set_setting('x_auto_share', new)
+                    edit_message_fast(chat_id, msg_id, M(f"X Auto Share: {new.upper()}\n------------------------------\n{'Post admin sekarang auto ke X.' if new=='on' else 'Auto share ke X dimatikan.'}\nCek ENV X di Vercel kalau gagal."), get_admin_panel())
+            elif cdata == "admin_x_test":
+                if not is_admin(chat_id):
+                    edit_message_fast(chat_id, msg_id, M("Not admin"), get_back_keyboard())
+                else:
+                    ok = post_to_x(f"Test JogjaLend Bot X Auto Share {datetime.now(WIB).strftime('%H:%M')}")
+                    edit_message_fast(chat_id, msg_id, M(f"X Test: {'BERHASIL ✅ - Cek X lu' if ok else 'GAGAL ❌ - Cek ENV X / Basic Plan / Vercel Logs'}"), get_admin_panel())
             elif cdata == "lend_tag":
                 edit_message_fast(chat_id, msg_id, M(f"Tag Saat Ini: {HASHTAG}\n------------------------------\nGanti dengan command:\n/settag #tagbaru"), get_menu_1())
             elif cdata == "lend_persetujuan":
@@ -646,7 +713,6 @@ def main_handler():
                 edit_message_fast(chat_id, msg_id, "Deleted ✅", get_back_keyboard())
         return "ok", 200
     except Exception as e:
-        try:
-            print(f"[CRITICAL {where}] {e}\n{traceback.format_exc()}")
+        try: print(f"[CRITICAL {where}] {e}\n{traceback.format_exc()}")
         except: pass
         return "ok", 200
