@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V115 FAST + X PREMIUM + AUTO RETWEET #jogjalend - FORMAL ENGLISH
+# api/index.py - JogjaLend Bot Angel V117 LITE - Ringan + No Bug + Formal English
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time, hmac, hashlib, base64, urllib.parse
 from datetime import datetime, timezone, timedelta
@@ -91,6 +91,7 @@ def init_db():
         cur.execute("INSERT INTO bot_settings (key, value) VALUES ('approval', 'off') ON CONFLICT (key) DO NOTHING")
         cur.execute("INSERT INTO bot_settings (key, value) VALUES ('x_auto_share', 'off') ON CONFLICT (key) DO NOTHING")
         cur.execute("INSERT INTO bot_settings (key, value) VALUES ('last_retweet_id', '0') ON CONFLICT (key) DO NOTHING")
+        cur.execute("INSERT INTO bot_settings (key, value) VALUES ('x_retweet', 'on') ON CONFLICT (key) DO NOTHING")
         db.commit(); cur.close()
     except: pass
     finally: release_db(db)
@@ -162,7 +163,11 @@ def _x_upload_media(photo_bytes):
 def post_to_x(text_content, photo_bytes=None):
     try:
         if not X_API_KEY or not X_API_SECRET or not X_ACCESS_TOKEN or not X_ACCESS_SECRET:
-            print("X ENV not configured")
+            return False
+        # FIX V117 LITE: Filter kata kasar biar akun X gak ke-ban, ringan cuma cek kata
+        BAD = ["judol", "slot", "bokep", "porno", "togel", "gacor", "maxwin"]
+        if any(b in (text_content or "").lower() for b in BAD):
+            print(f"X blocked bad word")
             return False
         clean = re.sub(r"<[^>]+>", "", text_content or "").strip()
         if not clean:
@@ -179,13 +184,13 @@ def post_to_x(text_content, photo_bytes=None):
         if media_id:
             payload["media"] = {"media_ids": [media_id]}
         r = TG.post(url, headers={"Authorization": header, "Content-Type": "application/json"}, json=payload, timeout=10)
-        print(f"X post: {r.status_code} {r.text[:300]}")
+        print(f"X post: {r.status_code}")
         return r.status_code in [200, 201]
     except Exception as e:
         print(f"X post error: {e}")
         return False
 
-# ===== AUTO RETWEET #jogjalend =====
+# ===== AUTO RETWEET =====
 _X_MY_ID = None
 def _x_get_my_id():
     global _X_MY_ID
@@ -205,7 +210,6 @@ def auto_retweet_hashtag():
         last_id = get_setting('last_retweet_id', '0')
         my_id = _x_get_my_id()
         if not my_id: return "Failed to get my X user ID"
-        # Search recent, exclude retweets and replies, exclude own tweets
         query = f"{RETWEET_HASHTAG} -is:retweet -is:reply -from:jogjalend"
         url = "https://api.twitter.com/2/tweets/search/recent"
         params = {"query": query, "max_results": 10, "tweet.fields": "author_id,created_at"}
@@ -215,22 +219,23 @@ def auto_retweet_hashtag():
         r = TG.get(url, headers={"Authorization": h}, params=params, timeout=10)
         j = r.json()
         if r.status_code != 200:
-            print(f"Search error: {r.status_code} {r.text[:500]}")
+            print(f"Search error: {r.status_code} {r.text[:300]}")
             return f"Search failed {r.status_code}"
         tweets = j.get("data", [])
         if not tweets:
             return "No new tweet"
         count = 0
-        # Oldest first
         for t in reversed(tweets):
+            # FIX V117 LITE: Max 5 retweet per 10 menit biar gak spam / ke-ban X
+            if count >= 5:
+                break
             tid = t["id"]
-            # Skip own tweet
             if str(t.get("author_id")) == str(my_id):
                 continue
             retweet_url = f"https://api.twitter.com/2/users/{my_id}/retweets"
             h2 = _x_oauth_header("POST", retweet_url)
             rr = TG.post(retweet_url, headers={"Authorization": h2, "Content-Type": "application/json"}, json={"tweet_id": tid}, timeout=10)
-            print(f"Retweet {tid}: {rr.status_code} {rr.text[:200]}")
+            print(f"Retweet {tid}: {rr.status_code}")
             if rr.status_code in [200, 201]:
                 count += 1
                 set_setting('last_retweet_id', tid)
@@ -254,7 +259,9 @@ def to_fancy(text):
     res_parts.append(conv); return "".join(res_parts)
 
 def F(t): return to_fancy(t)
+# FIX V117 LITE: M() anti < > biar gak dikira tag HTML Telegram
 def M(t):
+    t = str(t).replace("<", "[").replace(">", "]")
     out = []
     for line in t.split("\n"):
         if line.strip() == "": out.append("")
@@ -284,9 +291,10 @@ def save_user_to_db(uid, user):
     except: pass
     finally: release_db(db)
 
+# FIX V117 LITE: get_user() dibenerin, gak pake and/or ngaco lagi
 def get_user(uid):
     u = USERS[uid]
-    if u["last_date"] == "" and uid not in USERS or (u["name"] == "" and DATABASE_URL):
+    if u["name"] == "" and DATABASE_URL:
         d = load_user_from_db(uid)
         if d: USERS[uid] = d; u = USERS[uid]
     today = datetime.now(WIB).strftime("%Y-%m-%d")
@@ -318,6 +326,7 @@ def send_message(chat_id, text, kb=None):
         return r.status_code == 200
     except: return False
 
+# FIX V117 LITE: edit gagal -> kirim pesan baru sebagai fallback
 def edit_message_fast(chat_id, msg_id, text, kb=None):
     try:
         kb_fancy = None
@@ -328,9 +337,14 @@ def edit_message_fast(chat_id, msg_id, text, kb=None):
                     if "text" in btn and "url" not in btn: btn["text"] = F(btn["text"])
         payload = {"chat_id": chat_id, "message_id": msg_id, "text": F(text).replace("<plain>", "").replace("</plain>", ""), "parse_mode": "HTML", "disable_web_page_preview": True}
         if kb_fancy: payload["reply_markup"] = kb_fancy
-        TG.post(f"{BASE_TG}/editMessageText", json=payload, timeout=3)
-        return True
-    except: return False
+        r = TG.post(f"{BASE_TG}/editMessageText", json=payload, timeout=3)
+        if r.status_code == 200:
+            return True
+        # Fallback: kalau edit gagal (pesan sama / terlalu lama), kirim baru
+        return send_message(chat_id, text, kb)
+    except:
+        try: return send_message(chat_id, text, kb)
+        except: return False
 
 def send_qris(chat_id):
     if QRIS_IMAGE_URL:
@@ -580,14 +594,28 @@ def handle_admin_command(chat_id, text):
         res = auto_retweet_hashtag()
         send_message(chat_id, M(f"Retweet Test: {res}"))
         return True
+    # FIX V117 LITE: Broadcast ada hitungan sukses/gagal/total + anti-flood ringan
     if text.startswith("/broadcast"):
         btext = text.replace("/broadcast", "").strip()
-        if btext:
-            db = get_db()
-            if db:
-                cur = db.cursor(); cur.execute("SELECT user_id FROM menfess_users"); rows = cur.fetchall(); cur.close(); release_db(db)
-                for r in rows: send_message(r[0], f"📢 BROADCAST\n{SEP}\n{btext}")
-                send_message(chat_id, M(f"Broadcast has been sent to {len(rows)} users."))
+        if not btext:
+            send_message(chat_id, "Please type: /broadcast [your message]", get_back_keyboard())
+            return True
+        db = get_db()
+        if not db:
+            send_message(chat_id, "Database is not connected. Broadcast failed.", get_back_keyboard())
+            return True
+        try:
+            cur = db.cursor(); cur.execute("SELECT user_id FROM menfess_users WHERE banned=FALSE"); rows = cur.fetchall(); cur.close()
+        except Exception as e:
+            send_message(chat_id, f"Failed to get user list: {e}", get_back_keyboard())
+            return True
+        finally: release_db(db)
+        sukses = 0; gagal = 0
+        for r in rows:
+            if send_message(r[0], f"📢 BROADCAST\n{SEP}\n{btext}"): sukses += 1
+            else: gagal += 1
+            time.sleep(0.05)
+        send_message(chat_id, f"✅ Broadcast Sent!\n{SEP}\nMessage: {btext[:100]}\n\nSuccessfully sent to: {sukses} members\nFailed: {gagal} members (blocked bot / deleted account)\nTotal: {len(rows)} members", get_admin_panel())
         return True
     if text.startswith("/users"):
         send_user_list(chat_id); return True
@@ -629,7 +657,7 @@ def cron_retweet():
 def main_handler():
     data = {}; where = "init"
     try:
-        if request.method == "GET": return "JogjaLend Bot V115 FAST + X + QRIS + RT OK", 200
+        if request.method == "GET": return "JogjaLend Bot V117 LITE OK", 200
         where = "parse_json"; data = request.get_json(force=True, silent=True) or {}
         if "message" in data:
             msg = data["message"]; chat_id = msg["chat"]["id"]; uid = str(chat_id)
@@ -694,6 +722,7 @@ def main_handler():
                                     wm.seek(0); wm_bytes = wm.read(); wm.seek(0)
                                     r = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": base_cap, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", wm, "image/jpeg")}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
                                 else:
+                                    # FIX LITE: kalau watermark gagal, kirim original biar gak hang
                                     r = TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=3).json(); ch_id = r.get("result", {}).get("message_id")
                             else:
                                 r = TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
@@ -730,7 +759,7 @@ def main_handler():
                 kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message_fast(chat_id, msg_id, f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend", kb)
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V115\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V117 LITE\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
             elif cdata == "x_premium":
                 if is_premium_active(user):
                     auto = "ON" if user.get("x_auto", True) else "OFF"
@@ -764,7 +793,7 @@ def main_handler():
                     edit_message_fast(chat_id, msg_id, f"❌ Rejected. User {target_id}", get_admin_panel())
                     send_message(target_id, f"❌ Your X Premium payment was rejected.\n{SEP}\nPlease contact the admin if you believe you have completed the transfer.", get_back_keyboard())
             elif cdata == "admin_panel":
-                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V115\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
+                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V117 LITE\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
             elif cdata == "admin_x_toggle":
                 if not is_admin(chat_id):
@@ -804,12 +833,12 @@ def main_handler():
                 cur = get_setting('approval', 'off'); new = 'on' if cur == 'off' else 'off'; set_setting('approval', new)
                 kb = {"inline_keyboard": [[{"text": f"Mode: {new.upper()} - Tap to change", "callback_data": "toggle_approval"}], [{"text": "Back", "callback_data": "lend_page1"}]]}
                 edit_message_fast(chat_id, msg_id, M(f"Approval Mode has been changed to {new.upper()}"), kb)
-            elif cdata == "lend_hapus": edit_message_fast(chat_id, msg_id, M("Delete Message\n------------------------------\nUsers may delete their own posts using the Delete button after posting. Admins may use /del by replying."), get_menu_1())
+            elif cdata == "lend_hapus": edit_message_fast(chat_id, msg_id, M("Delete Message\n------------------------------\nUsers may delete their own posts using the Delete button after posting."), get_menu_1())
             elif cdata == "lend_lang": edit_message_fast(chat_id, msg_id, M("Language\n------------------------------\nCurrent bot language: English (Formal)."), get_menu_1())
             elif cdata == "lend_peraturan":
                 per = get_setting('peraturan', '-')
-                edit_message_fast(chat_id, msg_id, M(f"Rules\n------------------------------\n{per}\n\nTo change: /setperaturan <text>"), get_menu_2())
-            elif cdata == "lend_peringatan": edit_message_fast(chat_id, msg_id, M(f"Warnings\n------------------------------\n/warn <user_id> - Add a warning (3 warnings = auto ban)\nYour current warnings: {user.get('warn',0)}/3"), get_menu_2())
+                edit_message_fast(chat_id, msg_id, M(f"Rules\n------------------------------\n{per}\n\nTo change: /setperaturan [text]"), get_menu_2())
+            elif cdata == "lend_peringatan": edit_message_fast(chat_id, msg_id, M(f"Warnings\n------------------------------\n/warn [user_id] - Add a warning (3 warnings = auto ban)\nYour current warnings: {user.get('warn',0)}/3"), get_menu_2())
             elif cdata == "lend_blacklist":
                 db = get_db()
                 txt = "Blacklist\n------------------------------\n"
@@ -818,10 +847,10 @@ def main_handler():
                     if not rows: txt += "There are no banned users."
                     else:
                         for r in rows: txt += f"{r[1]} - {r[0]} warn:{r[2]}\n"
-                    kb = {"inline_keyboard": [[{"text": "Unban: /unban <id>", "callback_data": "admin_noop"}], [{"text": "Back", "callback_data": "lend_page2"}]]}
+                    kb = {"inline_keyboard": [[{"text": "Unban: /unban [id]", "callback_data": "admin_noop"}], [{"text": "Back", "callback_data": "lend_page2"}]]}
                 else: kb = get_menu_2()
                 edit_message_fast(chat_id, msg_id, M(txt), kb)
-            elif cdata == "lend_izin": edit_message_fast(chat_id, msg_id, M("Permissions\n------------------------------\nAll users may post text/media (maximum 5). Admins may ban or warn users. Please edit the code to limit links."), get_menu_2())
+            elif cdata == "lend_izin": edit_message_fast(chat_id, msg_id, M("Permissions\n------------------------------\nAll users may post text/media (maximum 5). Admins may ban or warn users."), get_menu_2())
             elif cdata == "lend_log": edit_message_fast(chat_id, msg_id, M(f"Channel Log\n------------------------------\nLog Channel: {LOG_CHANNEL}\nErrors and approvals will be sent here."), get_menu_2())
             elif cdata == "lend_channel":
                 if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M(f"Channel Management\n------------------------------\nPlease select a posting target.\nCurrent: {user.get('admin_target','both').upper()}"), get_channel_target_keyboard(user))
@@ -840,8 +869,12 @@ def main_handler():
                 if db:
                     cur = db.cursor(); cur.execute("SELECT SUM(total_text), SUM(total_media) FROM menfess_users"); s = cur.fetchone(); cur.close(); release_db(db)
                     edit_message_fast(chat_id, msg_id, M(f"GLOBAL STATISTICS\n------------------------------\nText : {s[0]}\nMedia: {s[1]}"), get_admin_panel())
+            # FIX V117 LITE: Broadcast tombol sekarang bener, gak pake <message> lagi
             elif cdata == "admin_broadcast":
-                edit_message_fast(chat_id, msg_id, M("Broadcast\n------------------------------\nPlease type:") + "\n/broadcast <message>\n" + M("It will be sent to all users in the database."), get_admin_panel())
+                if not is_admin(chat_id):
+                    edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
+                else:
+                    edit_message_fast(chat_id, msg_id, "📢 BROADCAST\n------------------------------\nPlease type:\n/broadcast [your message]\n\nExample:\n/broadcast Halo semua, besok ready stock baru\n\nIt will be sent to all users in the database.", get_back_keyboard())
             elif cdata == "admin_webhook":
                 r = TG.get(f"{BASE_TG}/getWebhookInfo", timeout=3).json()
                 res = r.get('result', {})
