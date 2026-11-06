@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - FIXED 20% TRANSPARAN POJOK
+# api/index.py - JogjaLend Bot Angel V110.9 FULL FINAL - FIXED 20% MARGIN 1.5%
 from flask import Flask, request, jsonify
 import os, requests, io, random, re, traceback, copy, time
 from datetime import datetime, timezone, timedelta
@@ -235,7 +235,7 @@ def get_channel_target_keyboard(user):
         [{"text": "⬅️ Kembali", "callback_data": "admin_panel"}]
     ]}
 
-# ===== FIXED: LOGO TRANSPARAN LURUS 20% NEMPEL POJOK KIRI ATAS =====
+# ===== FIXED: LOGO TRANSPARAN LURUS 20% MARGIN 1.5% =====
 def find_logo():
     base_dir = os.path.dirname(__file__)
     candidates = [
@@ -268,7 +268,7 @@ def add_watermark(photo_bytes):
             return None
         base = Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
         logo = Image.open(lp).convert("RGBA")
-        # Logo udah transparan, tinggal potong padding transparan biar nempel ujung
+        # Logo udah transparan, potong padding transparan biar pas
         bbox = logo.getbbox()
         if bbox:
             logo = logo.crop(bbox)
@@ -284,8 +284,8 @@ def add_watermark(photo_bytes):
             target_h = max_h
             target_w = int(target_h * logo.width / logo.height)
         logo = logo.resize((target_w, target_h), Image.LANCZOS)
-        # FIX POJOK - margin 0, nempel ujung kiri atas
-        margin = 0
+        # FIX MARGIN 1.5% - gak mentok, gak jauh, ada napas dikit
+        margin = max(10, int(w * 0.015))
         overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
         overlay.paste(logo, (margin, margin), logo)
         combined = Image.alpha_composite(base, overlay).convert("RGB")
