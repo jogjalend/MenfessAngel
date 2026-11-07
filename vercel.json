@@ -1,1 +1,8 @@
-{ "crons": [{ "path": "/api/cron_retweet", "schedule": "*/10 * * * *" }] }
+{
+  "crons": [
+    {
+      "path": "/api/cron_retweet",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}
