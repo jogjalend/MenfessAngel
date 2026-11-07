@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V117.3 - Full Fix + Formal English (Text Unchanged) + View on X + Lightweight + Bug-Free
+# api/index.py - JogjaLend Bot Angel V117.3 - Full Fix + Formal English (Text Unchanged) + View on X + Logo Wajib Coba, Gagal Tetap Share + Lightweight
 from flask import Flask, request, jsonify
 import os, requests, io, re, traceback, copy, time, hmac, hashlib, base64, urllib.parse, secrets, json
 from datetime import datetime, timezone, timedelta
@@ -158,20 +158,50 @@ def _x_oauth_header(method, url, extra_params=None):
     header = "OAuth " + ", ".join(f'{k}="{urllib.parse.quote(str(v), safe="")}"' for k,v in sorted(oauth.items()))
     return header
 
-def _x_upload_media(photo_bytes):
+def _x_upload_media(photo_bytes, is_video=False):
     try:
+        if not photo_bytes: return None
+        if is_video:
+            url_init = "https://upload.twitter.com/1.1/media/upload.json"
+            h = _x_oauth_header("POST", url_init)
+            r = TG.post(url_init, headers={"Authorization": h}, data={"command": "INIT", "total_bytes": len(photo_bytes), "media_type": "video/mp4", "media_category": "tweet_video"}, timeout=15)
+            j = r.json()
+            media_id = j.get("media_id_string")
+            if not media_id:
+                print(f"X video INIT failed: {j}")
+                return None
+            chunk_size = 1024 * 1024
+            for idx in range(0, len(photo_bytes), chunk_size):
+                chunk = photo_bytes[idx:idx+chunk_size]
+                h2 = _x_oauth_header("POST", url_init)
+                files = {"media": ("video.mp4", chunk, "video/mp4")}
+                rr = TG.post(url_init, headers={"Authorization": h2}, data={"command": "APPEND", "media_id": media_id, "segment_index": idx // chunk_size}, files=files, timeout=20)
+                print(f"X video APPEND {idx//chunk_size}: {rr.status_code}")
+            h3 = _x_oauth_header("POST", url_init)
+            rf = TG.post(url_init, headers={"Authorization": h3}, data={"command": "FINALIZE", "media_id": media_id}, timeout=15)
+            print(f"X video FINALIZE: {rf.status_code} {rf.text[:200]}")
+            for _ in range(10):
+                h4 = _x_oauth_header("GET", url_init, {"command": "STATUS", "media_id": media_id})
+                rs = TG.get(url_init, headers={"Authorization": h4}, params={"command": "STATUS", "media_id": media_id}, timeout=10)
+                st = rs.json().get("processing_info", {}).get("state")
+                print(f"X video STATUS: {st}")
+                if st == "succeeded": break
+                if st == "failed": return None
+                time.sleep(2)
+            return media_id
         url = "https://upload.twitter.com/1.1/media/upload.json"
         header = _x_oauth_header("POST", url)
         if not header: return None
         files = {"media": ("img.jpg", photo_bytes, "image/jpeg")}
-        r = TG.post(url, headers={"Authorization": header}, files=files, timeout=10)
+        r = TG.post(url, headers={"Authorization": header}, files=files, timeout=15)
         j = r.json()
+        print(f"X photo upload: {r.status_code} {str(j)[:200]}")
         return j.get("media_id_string")
     except Exception as e:
         print(f"X upload error: {e}")
         return None
 
-def post_to_x(text_content, photo_bytes=None):
+def post_to_x(text_content, photo_bytes=None, is_video=False):
     try:
         if not X_API_KEY or not X_API_SECRET or not X_ACCESS_TOKEN or not X_ACCESS_SECRET:
             return False, None
@@ -186,7 +216,7 @@ def post_to_x(text_content, photo_bytes=None):
             clean = clean[:277] + "..."
         media_id = None
         if photo_bytes:
-            media_id = _x_upload_media(photo_bytes)
+            media_id = _x_upload_media(photo_bytes, is_video=is_video)
         url = "https://api.twitter.com/2/tweets"
         header = _x_oauth_header("POST", url, None)
         if not header: return False, None
@@ -429,15 +459,20 @@ def get_logo_cached():
     global _LOGO_CACHED
     if _LOGO_CACHED is not None: return _LOGO_CACHED
     base_dir = os.path.dirname(__file__)
-    for p in [os.path.join(base_dir, "logo.png"), "logo.png", os.path.join(os.getcwd(), "api/logo.png")]:
+    for p in [os.path.join(base_dir, "logo.png"), "logo.png"]:
         if os.path.exists(p):
             try:
                 logo = Image.open(p).convert("RGBA")
                 bbox = logo.getbbox()
                 if bbox: logo = logo.crop(bbox)
+                if logo.width > 300:
+                    logo = logo.resize((300, int(300 * logo.height / logo.width)), Image.LANCZOS)
                 _LOGO_CACHED = logo
                 return logo
-            except: return None
+            except Exception as e:
+                print(f"logo load error: {e}")
+                return None
+    print("logo.png NOT FOUND - wajib ada di api/logo.png")
     return None
 
 def download_file(file_id):
@@ -453,21 +488,20 @@ def add_watermark(photo_bytes):
         logo_orig = get_logo_cached()
         if not logo_orig: return None
         base = Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
-        logo = logo_orig.copy()
         w, h = base.size
-        target_w = int(w * 0.20); target_w = max(60, min(target_w, 400))
-        target_h = int(target_w * logo.height / logo.width)
-        max_h = int(h * 0.20)
-        if target_h > max_h:
-            target_h = max_h; target_w = int(target_h * logo.width / logo.height)
-        logo = logo.resize((target_w, target_h), Image.LANCZOS)
+        target_w = max(60, min(int(w * 0.18), 300))
+        logo = logo_orig.resize((target_w, int(target_w * logo_orig.height / logo_orig.width)), Image.LANCZOS)
         margin = max(10, int(w * 0.015))
         overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
         overlay.paste(logo, (margin, margin), logo)
         combined = Image.alpha_composite(base, overlay).convert("RGB")
-        bio = io.BytesIO(); combined.save(bio, "JPEG", quality=82, optimize=True); bio.seek(0); return bio
+        bio = io.BytesIO()
+        combined.save(bio, "JPEG", quality=80, optimize=True)
+        bio.seek(0)
+        return bio
     except Exception as e:
-        print(f"watermark error: {e}"); return None
+        print(f"watermark error: {e}")
+        return None
 
 def get_font(size, bold=False):
     try:
@@ -798,16 +832,25 @@ def main_handler():
                             send_message(LOG_CHANNEL, f"📥 PENDING MENFESS - Key: {pid}\nFrom: {user['name']} (@{user['username']})", kb_appr)
                             send_message(chat_id, "Your media has been submitted for administrator approval.\nPlease wait for confirmation.", get_back_keyboard())
                             return "ok", 200
+                        # === FULL FIX MEDIA: logo dicoba dulu, gagal tetap share, download 1x ===
                         target = user.get("admin_target", "both") if is_admin(chat_id) else ("both" if user.get("threads_on") else "channel")
                         ch_id = None
                         wm_bytes = None
                         x_url = None
+                        raw = None
+                        if is_photo:
+                            raw = download_file(fid)
+                            wm = add_watermark(raw) if raw else None
+                            if wm:
+                                wm.seek(0); wm_bytes = wm.read(); wm.seek(0)
+                                print("Logo berhasil nempel")
+                            else:
+                                print("Logo gagal nempel, pakai foto asli, tetap share ke X")
+                                wm_bytes = raw
                         if target in ["channel", "both"]:
                             if is_photo:
-                                raw = download_file(fid); wm = add_watermark(raw) if raw else None
-                                if wm:
-                                    wm.seek(0); wm_bytes = wm.read(); wm.seek(0)
-                                    r = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": base_cap, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", wm, "image/jpeg")}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
+                                if wm_bytes:
+                                    r = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": base_cap, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", io.BytesIO(wm_bytes), "image/jpeg")}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
                                 else:
                                     r = TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=3).json(); ch_id = r.get("result", {}).get("message_id")
                             else:
@@ -815,10 +858,14 @@ def main_handler():
                             save_post_owner(ch_id, uid)
                         if target in ["threads", "both"]: post_to_threads(base_cap)
                         if (is_admin(chat_id) or (is_premium_active(user) and user.get("x_auto", True))) and get_setting('x_auto_share', 'off') == 'on':
-                            if is_photo and wm_bytes:
-                                _ok_x, x_url = post_to_x(base_cap, wm_bytes)
-                            elif not is_photo:
-                                _ok_x, x_url = post_to_x(base_cap)
+                            if is_photo:
+                                _ok_x, x_url = post_to_x(base_cap, wm_bytes, is_video=False)
+                            else:
+                                video_bytes = download_file(fid)
+                                if video_bytes:
+                                    _ok_x, x_url = post_to_x(base_cap, video_bytes, is_video=True)
+                                else:
+                                    _ok_x, x_url = post_to_x(base_cap)
                         user["today_media"] += 1; user["total_media"] += 1
                         save_user_to_db(uid, user); send_success(chat_id, user, ch_id, target, x_url)
         if "callback_query" in data:
@@ -922,15 +969,31 @@ def main_handler():
                                     send_message(owner_id, f"Your menfess has been approved and published.\n{SEP}\n{txt[:100]}", kb_owner)
                             else:
                                 fid2 = pend.get("file_id", ""); cap2 = pend.get("caption", "")
+                                # Approval media: coba logo juga, gagal tetap share
+                                media_for_x = None
                                 if pend.get("type") == "photo":
-                                    rr = TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid2, "caption": cap2, "parse_mode": "HTML"}, timeout=5).json()
+                                    raw2 = download_file(fid2)
+                                    wm2 = add_watermark(raw2) if raw2 else None
+                                    if wm2:
+                                        wm2.seek(0); media_for_x = wm2.read()
+                                        rr = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": cap2, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", io.BytesIO(media_for_x), "image/jpeg")}, timeout=5).json()
+                                    else:
+                                        media_for_x = raw2
+                                        rr = TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid2, "caption": cap2, "parse_mode": "HTML"}, timeout=5).json()
                                 else:
                                     rr = TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid2, "caption": cap2, "parse_mode": "HTML"}, timeout=5).json()
                                 ch_mid = rr.get("result", {}).get("message_id")
                                 save_post_owner(ch_mid, owner_id)
                                 if get_setting('x_auto_share', 'off') == 'on':
                                     try:
-                                        _ok_appr, x_url_appr = post_to_x(cap2)
+                                        if pend.get("type") == "photo":
+                                            _ok_appr, x_url_appr = post_to_x(cap2, media_for_x, is_video=False)
+                                        else:
+                                            vbytes = download_file(fid2)
+                                            if vbytes:
+                                                _ok_appr, x_url_appr = post_to_x(cap2, vbytes, is_video=True)
+                                            else:
+                                                _ok_appr, x_url_appr = post_to_x(cap2)
                                     except: x_url_appr = None
                                 try:
                                     ou = get_user(str(owner_id)); ou["today_media"] += 1; ou["total_media"] += 1; save_user_to_db(str(owner_id), ou)
@@ -1057,8 +1120,6 @@ def main_handler():
         except: pass
         return "ok", 200
 
-# === FIX Not Found untuk vercel.json builds + routes (version 2) ===
-# HARUS PALING BAWAH, agar tidak menutupi route di atas
 @app.route("/<path:path>", methods=["GET", "POST"])
 def catch_all(path):
     if request.method == "POST":
