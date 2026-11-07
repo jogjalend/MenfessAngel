@@ -1,11 +1,15 @@
-# V117.6 Full Code Fix - JogjaLend Menfess Bot + Fitur Baru X
-# Fitur X Baru: View on X, Delete from X, Thread, Auto Retweet, X Status, X Stats
+# V117.7 Full Code Fix - JogjaLend Menfess Bot + Fitur Baru X
+# Fix: Vercel Routing, 404 /, 404 /api/index, ModuleNotFound, Duplicate __main__
 
-import os, json, time, requests, textwrap
+import os, time, requests, textwrap
 from flask import Flask, request, jsonify
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from requests_oauthlib import OAuth1Session
+
+try:
+    from requests_oauthlib import OAuth1Session
+except Exception:
+    OAuth1Session = None
 
 app = Flask(__name__)
 
@@ -20,7 +24,9 @@ ADMIN_ID = int(os.environ.get("ADMIN_ID", "0") or 0)
 X_USERNAME = "jogja_lend"
 TG = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# ================= DB =================
+# ================= DB - LAZY INIT AGAR TIDAK CRASH SAAT COLD START =================
+_DB_INITIALIZED = False
+
 def db():
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
@@ -39,11 +45,14 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS retweeted (tweet_id TEXT PRIMARY KEY, created_at BIGINT)")
     con.commit(); con.close()
 
-try:
-    if DATABASE_URL:
-        init_db()
-except Exception as e:
-    print("INIT DB ERROR:", e)
+def ensure_db():
+    global _DB_INITIALIZED
+    if not _DB_INITIALIZED and DATABASE_URL:
+        try:
+            init_db()
+            _DB_INITIALIZED = True
+        except Exception as e:
+            print("INIT DB ERROR:", e)
 
 def get_setting(k, d="on"):
     try:
@@ -83,8 +92,10 @@ def edit_msg(chat_id, msg_id, text, reply_markup=None):
 def answer_cq(cq_id, text=""):
     return tg("answerCallbackQuery", {"callback_query_id": cq_id, "text": text})
 
-# ================= X - FITUR BARU =================
+# ================= X =================
 def x_oauth():
+    if OAuth1Session is None:
+        raise Exception("requests_oauthlib not installed")
     return OAuth1Session(X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET)
 
 def x_upload_media(oauth, media_url):
@@ -105,17 +116,14 @@ def x_post_single(oauth, text, media_id=None, reply_to=None):
     return None
 
 def post_to_x_thread(text, media_url=None, reply_to=None):
-    """FITUR BARU: Thread otomatis jika teks > 280 karakter. Return (True, url, tweet_id)"""
     try:
         oauth = x_oauth()
         media_id = x_upload_media(oauth, media_url) if media_url else None
-        # Potong teks menjadi chunk 270 karakter agar tidak terpotong kata
         chunks = textwrap.wrap(text, width=270, break_long_words=False, break_on_hyphens=False) or [text]
         first_id = None
         last_id = reply_to
         for i, chunk in enumerate(chunks):
             suffix = f" ({i+1}/{len(chunks)})" if len(chunks) > 1 else ""
-            # Hanya tweet pertama yang membawa media
             mid = media_id if i == 0 else None
             tid = x_post_single(oauth, chunk + suffix, mid, last_id)
             if not tid: return False, None, None
@@ -135,12 +143,10 @@ def delete_from_x(x_url=None, x_id=None):
         if not tid: return
         oauth = x_oauth()
         oauth.delete(f"https://api.twitter.com/2/tweets/{tid}", timeout=20)
-        print("Deleted from X:", tid)
     except Exception as e:
         print("DELETE X ERROR:", e)
 
 def check_x_status():
-    """FITUR BARU: Cek apakah token X masih valid"""
     try:
         oauth = x_oauth()
         r = oauth.get("https://api.twitter.com/2/users/me", timeout=20)
@@ -315,9 +321,12 @@ def handle_admin_callback(cq, data, chat_id, msg_id):
         kb = {"inline_keyboard": [[{"text": "⬅️ Kembali ke Admin", "callback_data": "admin_panel"}]]}
         edit_msg(chat_id, msg_id, txt, kb); answer_cq(cq["id"])
 
-# ================= WEBHOOK =================
+# ================= WEBHOOK - FIX ROUTING VERCEL =================
 @app.route("/api/webhook", methods=["POST"])
+@app.route("/webhook", methods=["POST"])
+@app.route("/api/index", methods=["POST"])
 def webhook():
+    ensure_db()
     update = request.get_json(force=True, silent=True) or {}
     update_id = update.get("update_id")
     if update_id is not None:
@@ -460,13 +469,18 @@ def webhook():
     return jsonify({"ok": True})
 
 @app.route("/api/cron_retweet", methods=["GET"])
+@app.route("/cron_retweet", methods=["GET"])
 def cron_retweet():
+    ensure_db()
     if get_setting("x_retweet", "on") != "on": return "Retweet OFF", 200
     return auto_retweet_hashtag(), 200
 
+# FIX 404 di halaman utama - Vercel memetakan api/index.py ke /api/index
 @app.route("/", methods=["GET"])
+@app.route("/api/index", methods=["GET"])
+@app.route("/api", methods=["GET"])
 def index():
-    return "JogjaLend Bot V117.6 OK", 200
+    return "JogjaLend Bot V117.7 OK", 200
 
 if __name__ == "__main__":
     app.run()
