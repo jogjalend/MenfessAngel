@@ -701,6 +701,9 @@ def cron_retweet():
 
 @app.route("/", methods=["GET", "POST"])
 @app.route("/api/index", methods=["GET", "POST"])
+@app.route("/api/index.py", methods=["GET", "POST"])
+@app.route("/api/webhook", methods=["GET", "POST"])
+@app.route("/webhook", methods=["GET", "POST"])
 def main_handler():
     data = {}; where = "init"
     try:
@@ -834,6 +837,10 @@ def main_handler():
                 mode = "weekly" if cdata == "stats_weekly" else "today"
                 send_stats(chat_id, user, mode)
             elif cdata == "back_home": edit_message_fast(chat_id, msg_id, get_welcome_text(user), get_main_keyboard(is_admin(chat_id)))
+            elif cdata == "close":
+                try: TG.post(f"{BASE_TG}/deleteMessage", json={"chat_id": chat_id, "message_id": msg_id}, timeout=2)
+                except: pass
+            elif cdata == "admin_noop": pass
             elif cdata == "lend_page1": edit_message_fast(chat_id, msg_id, M("Please select one of the settings you would like to change."), get_menu_1())
             elif cdata == "lend_page2": edit_message_fast(chat_id, msg_id, M("Please select one of the settings you would like to change."), get_menu_2())
             elif cdata == "my_profile": edit_message_fast(chat_id, msg_id, f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5\nHashtag: {HASHTAG}\nX Premium: {'ACTIVE until '+user.get('x_premium_until','') if is_premium_active(user) else 'Not active'}", get_back_keyboard())
@@ -941,6 +948,25 @@ def main_handler():
             elif cdata == "admin_panel":
                 if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V117.3\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
+            elif cdata == "admin_users":
+                send_user_list(chat_id)
+            elif cdata == "admin_allstats":
+                db = get_db()
+                if db:
+                    try:
+                        cur = db.cursor(); cur.execute("SELECT COUNT(*), COALESCE(SUM(total_text),0), COALESCE(SUM(total_media),0) FROM menfess_users"); r = cur.fetchone(); cur.close()
+                        edit_message_fast(chat_id, msg_id, f"All Stats\n{SEP}\nTotal Users: {r[0]}\nTotal Text: {r[1]}\nTotal Media: {r[2]}", get_admin_panel())
+                    except: edit_message_fast(chat_id, msg_id, "Failed to load stats.", get_admin_panel())
+                    finally: release_db(db)
+                else: edit_message_fast(chat_id, msg_id, "Database is not connected.", get_admin_panel())
+            elif cdata == "admin_broadcast":
+                edit_message_fast(chat_id, msg_id, "Broadcast\n------------------------------\nType: /broadcast [your message]", get_admin_panel())
+            elif cdata == "admin_webhook":
+                host = request.host_url.rstrip('/'); wh = f"{host}/api/index"
+                r = TG.get(f"{BASE_TG}/setWebhook", params={"url": wh}, timeout=3).json()
+                edit_message_fast(chat_id, msg_id, f"Webhook: {wh}\nResult: {r}", get_admin_panel())
+            elif cdata == "admin_logs":
+                edit_message_fast(chat_id, msg_id, f"Check Logs\n------------------------------\nLog Channel: {LOG_CHANNEL}\nPlease check Vercel Logs for errors.", get_admin_panel())
             elif cdata == "admin_x_toggle":
                 if not is_admin(chat_id):
                     edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
@@ -1007,49 +1033,43 @@ def main_handler():
                 if is_admin(chat_id): user["admin_target"] = "threads"; save_user_to_db(uid, user); edit_message_fast(chat_id, msg_id, M(f"Set to THREADS ONLY\n------------------------------\nMenfess will only be sent to Threads"), get_channel_target_keyboard(user))
             elif cdata == "admin_set_both":
                 if is_admin(chat_id): user["admin_target"] = "both"; save_user_to_db(uid, user); edit_message_fast(chat_id, msg_id, M(f"Set to BOTH\n------------------------------\nMenfess will be sent to Channel + Threads"), get_channel_target_keyboard(user))
-            elif cdata == "admin_users":
-                send_user_list(chat_id)
-                edit_message_fast(chat_id, msg_id, M("User list has been sent below."), get_admin_panel())
-            elif cdata == "admin_allstats":
-                db = get_db()
-                if db:
-                    cur = db.cursor(); cur.execute("SELECT SUM(total_text), SUM(total_media) FROM menfess_users"); s = cur.fetchone(); cur.close(); release_db(db)
-                    edit_message_fast(chat_id, msg_id, M(f"GLOBAL STATISTICS\n------------------------------\nText : {s[0]}\nMedia: {s[1]}"), get_admin_panel())
-            elif cdata == "admin_broadcast":
-                if not is_admin(chat_id):
-                    edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
-                else:
-                    edit_message_fast(chat_id, msg_id, "📢 BROADCAST\n------------------------------\nPlease type:\n/broadcast [your message]\n\nExample:\n/broadcast Hello everyone, new stock is available tomorrow\n\nIt will be sent to all users in the database.", get_back_keyboard())
-            elif cdata == "admin_webhook":
-                r = TG.get(f"{BASE_TG}/getWebhookInfo", timeout=3).json()
-                res = r.get('result', {})
-                url = res.get('url', '')
-                edit_message_fast(chat_id, msg_id, M("Webhook Information\n------------------------------") + f"\nURL: <a href=\"{url}\">{url}</a>\n" + M(f"Pending: {res.get('pending_update_count')}\nLast Error: {res.get('last_error_message')}\n\nTo reset:") + "\n/setwebhook", get_admin_panel())
-            elif cdata == "admin_logs": edit_message_fast(chat_id, msg_id, M(f"Logs\n------------------------------\nErrors are automatically sent to {LOG_CHANNEL}\nPlease check /webhookinfo and Vercel Logs."), get_admin_panel())
-            elif cdata == "admin_noop": pass
-            elif cdata == "close":
-                try: TG.post(f"{BASE_TG}/deleteMessage", json={"chat_id": chat_id, "message_id": msg_id}, timeout=2)
-                except: pass
             elif cdata.startswith("del_"):
-                mid = cdata.replace("del_", "")
-                allowed = is_admin(chat_id)
-                if not allowed and mid.isdigit():
+                try:
+                    mid = int(cdata.replace("del_", ""))
                     db = get_db()
+                    owner = None
                     if db:
-                        try:
-                            cur = db.cursor(); cur.execute("SELECT owner_id FROM menfess_posts WHERE msg_id=%s", (mid,)); r = cur.fetchone(); cur.close()
-                            if r and str(r[0]) == str(uid): allowed = True
-                        except: pass
-                        finally: release_db(db)
-                if not allowed:
-                    edit_message_fast(chat_id, msg_id, "You are not the owner of this post.", get_back_keyboard())
-                else:
-                    if mid.isdigit():
-                        try: TG.post(f"{BASE_TG}/deleteMessage", json={"chat_id": CHANNEL_ID, "message_id": int(mid)}, timeout=2)
-                        except: pass
-                    edit_message_fast(chat_id, msg_id, "Successfully Deleted ✅", get_back_keyboard())
+                        cur = db.cursor(); cur.execute("SELECT owner_id FROM menfess_posts WHERE msg_id=%s", (str(mid),)); rr = cur.fetchone(); cur.close(); release_db(db)
+                        if rr: owner = rr[0]
+                    if owner and str(owner) != uid and not is_admin(chat_id):
+                        edit_message_fast(chat_id, msg_id, "You can only delete your own post.", get_back_keyboard())
+                    else:
+                        TG.post(f"{BASE_TG}/deleteMessage", json={"chat_id": CHANNEL_ID, "message_id": mid}, timeout=3)
+                        edit_message_fast(chat_id, msg_id, "Post deleted.", get_back_keyboard())
+                except Exception as e:
+                    edit_message_fast(chat_id, msg_id, f"Failed to delete: {e}", get_back_keyboard())
         return "ok", 200
     except Exception as e:
-        try: print(f"[CRITICAL {where}] {e}\n{traceback.format_exc()}")
+        print(f"ERROR {where}: {e}\n{traceback.format_exc()}")
+        try:
+            if "message" in data:
+                send_message(data["message"]["chat"]["id"], "An error occurred. Please try again.", get_back_keyboard())
         except: pass
         return "ok", 200
+
+# === FIX Not Found untuk vercel.json builds + routes (version 2) ===
+# HARUS PALING BAWAH, agar tidak menutupi route di atas
+@app.route("/<path:path>", methods=["GET", "POST"])
+def catch_all(path):
+    if request.method == "POST":
+        try:
+            data = request.get_json(force=True, silent=True) or {}
+            if "update_id" in data or "message" in data or "callback_query" in data:
+                return main_handler()
+        except:
+            pass
+        return main_handler()
+    return "JogjaLend Bot V117.3 OK", 200
+
+if __name__ == "__main__":
+    app.run()
