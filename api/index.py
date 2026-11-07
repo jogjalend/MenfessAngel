@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V117.3 - Full Fix + Formal English (Text Unchanged) + View on X + Logo Wajib Coba, Gagal Tetap Share + Lightweight
+# api/index.py - JogjaLend Bot Angel V117.4 - Full Fix + Button Sejajar 2x2 + Logo Coba Dulu Gagal Tetap Share + Lightweight
 from flask import Flask, request, jsonify
 import os, requests, io, re, traceback, copy, time, hmac, hashlib, base64, urllib.parse, secrets, json
 from datetime import datetime, timezone, timedelta
@@ -459,7 +459,16 @@ def get_logo_cached():
     global _LOGO_CACHED
     if _LOGO_CACHED is not None: return _LOGO_CACHED
     base_dir = os.path.dirname(__file__)
-    for p in [os.path.join(base_dir, "logo.png"), "logo.png"]:
+    root_dir = os.path.dirname(base_dir)
+    candidates = [
+        os.path.join(base_dir, "logo.png"),
+        os.path.join(root_dir, "logo.png"),
+        os.path.join(os.getcwd(), "logo.png"),
+        os.path.join(os.getcwd(), "api/logo.png"),
+        "logo.png",
+        "api/logo.png",
+    ]
+    for p in candidates:
         if os.path.exists(p):
             try:
                 logo = Image.open(p).convert("RGBA")
@@ -468,11 +477,12 @@ def get_logo_cached():
                 if logo.width > 300:
                     logo = logo.resize((300, int(300 * logo.height / logo.width)), Image.LANCZOS)
                 _LOGO_CACHED = logo
+                print(f"Logo found at: {p}")
                 return logo
             except Exception as e:
-                print(f"logo load error: {e}")
+                print(f"logo load error {p}: {e}")
                 return None
-    print("logo.png NOT FOUND - wajib ada di api/logo.png")
+    print("logo.png NOT FOUND di api/ maupun di root")
     return None
 
 def download_file(file_id):
@@ -575,12 +585,19 @@ def post_to_threads(text_content):
 def send_success(chat_id, user, ch_msg_id, target="both", x_url=None):
     try:
         url = f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_msg_id}" if ch_msg_id else f"https://t.me/{CHANNEL_ID.replace('@','')}"
+        # SEJAJAR 2x2 - V117.4
+        row1 = []
+        if target in ["channel", "both"] and ch_msg_id:
+            row1.append({"text": "View on Channel", "url": url})
+        if x_url:
+            row1.append({"text": "View on X", "url": x_url})
+        row2 = []
+        if ch_msg_id:
+            row2.append({"text": "Delete", "callback_data": f"del_{ch_msg_id}"})
+        row2.append({"text": "Back", "callback_data": "back_home"})
         buttons = []
-        if target in ["threads", "both"] and (user.get("threads_on") or is_admin(chat_id)): buttons.append([{"text": "View on Threads", "url": THREADS_URL}])
-        if target in ["channel", "both"] and ch_msg_id: buttons.append([{"text": "View on Channel", "url": url}])
-        if x_url: buttons.append([{"text": "View on X", "url": x_url}])
-        if ch_msg_id: buttons.append([{"text": "Delete", "callback_data": f"del_{ch_msg_id}"}])
-        buttons.append([{"text": "Back", "callback_data": "back_home"}])
+        if row1: buttons.append(row1)
+        if row2: buttons.append(row2)
         note = f" -> {target.upper()}" if is_admin(chat_id) else ""
         if is_premium_active(user) and user.get("x_auto", True) and get_setting('x_auto_share', 'off') == 'on':
             note += " + X"
@@ -741,7 +758,7 @@ def cron_retweet():
 def main_handler():
     data = {}; where = "init"
     try:
-        if request.method == "GET": return "JogjaLend Bot V117.3 OK", 200
+        if request.method == "GET": return "JogjaLend Bot V117.4 OK", 200
         where = "parse_json"; data = request.get_json(force=True, silent=True) or {}
         upd_id = data.get("update_id")
         if upd_id is not None:
@@ -832,7 +849,6 @@ def main_handler():
                             send_message(LOG_CHANNEL, f"📥 PENDING MENFESS - Key: {pid}\nFrom: {user['name']} (@{user['username']})", kb_appr)
                             send_message(chat_id, "Your media has been submitted for administrator approval.\nPlease wait for confirmation.", get_back_keyboard())
                             return "ok", 200
-                        # === FULL FIX MEDIA: logo dicoba dulu, gagal tetap share, download 1x ===
                         target = user.get("admin_target", "both") if is_admin(chat_id) else ("both" if user.get("threads_on") else "channel")
                         ch_id = None
                         wm_bytes = None
@@ -900,7 +916,7 @@ def main_handler():
                 kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message_fast(chat_id, msg_id, f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend", kb)
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V117.3\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V117.4\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
             elif cdata == "x_premium":
                 if is_premium_active(user):
                     auto = "ON" if user.get("x_auto", True) else "OFF"
@@ -962,14 +978,13 @@ def main_handler():
                                     ou = get_user(str(owner_id)); ou["today_text"] += 1; ou["total_text"] += 1; save_user_to_db(str(owner_id), ou)
                                 except: pass
                                 if owner_id:
-                                    kb_owner = {"inline_keyboard": []}
-                                    if ch_mid: kb_owner["inline_keyboard"].append([{"text": "View on Channel", "url": f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_mid}"}])
-                                    if x_url_appr: kb_owner["inline_keyboard"].append([{"text": "View on X", "url": x_url_appr}])
-                                    kb_owner["inline_keyboard"].append([{"text": "Back", "callback_data": "back_home"}])
+                                    row1_appr = []
+                                    if ch_mid: row1_appr.append({"text": "View on Channel", "url": f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_mid}"})
+                                    if x_url_appr: row1_appr.append({"text": "View on X", "url": x_url_appr})
+                                    kb_owner = {"inline_keyboard": [row1_appr, [{"text": "Back", "callback_data": "back_home"}]]} if row1_appr else {"inline_keyboard": [[{"text": "Back", "callback_data": "back_home"}]]}
                                     send_message(owner_id, f"Your menfess has been approved and published.\n{SEP}\n{txt[:100]}", kb_owner)
                             else:
                                 fid2 = pend.get("file_id", ""); cap2 = pend.get("caption", "")
-                                # Approval media: coba logo juga, gagal tetap share
                                 media_for_x = None
                                 if pend.get("type") == "photo":
                                     raw2 = download_file(fid2)
@@ -999,17 +1014,17 @@ def main_handler():
                                     ou = get_user(str(owner_id)); ou["today_media"] += 1; ou["total_media"] += 1; save_user_to_db(str(owner_id), ou)
                                 except: pass
                                 if owner_id:
-                                    kb_owner = {"inline_keyboard": []}
-                                    if ch_mid: kb_owner["inline_keyboard"].append([{"text": "View on Channel", "url": f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_mid}"}])
-                                    if x_url_appr: kb_owner["inline_keyboard"].append([{"text": "View on X", "url": x_url_appr}])
-                                    kb_owner["inline_keyboard"].append([{"text": "Back", "callback_data": "back_home"}])
+                                    row1_appr = []
+                                    if ch_mid: row1_appr.append({"text": "View on Channel", "url": f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_mid}"})
+                                    if x_url_appr: row1_appr.append({"text": "View on X", "url": x_url_appr})
+                                    kb_owner = {"inline_keyboard": [row1_appr, [{"text": "Back", "callback_data": "back_home"}]]} if row1_appr else {"inline_keyboard": [[{"text": "Back", "callback_data": "back_home"}]]}
                                     send_message(owner_id, "Your media has been approved and published.", kb_owner)
                             edit_message_fast(chat_id, msg_id, "Approved and published to the channel.", get_admin_panel())
                         else:
                             edit_message_fast(chat_id, msg_id, "Rejected.", get_admin_panel())
                             if owner_id: send_message(owner_id, "Your menfess was rejected by the administrator.", get_back_keyboard())
             elif cdata == "admin_panel":
-                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V117.3\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
+                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V117.4\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
             elif cdata == "admin_users":
                 send_user_list(chat_id)
@@ -1130,7 +1145,7 @@ def catch_all(path):
         except:
             pass
         return main_handler()
-    return "JogjaLend Bot V117.3 OK", 200
+    return "JogjaLend Bot V117.4 OK", 200
 
 if __name__ == "__main__":
     app.run()
