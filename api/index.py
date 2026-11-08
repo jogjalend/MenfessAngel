@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V117.4.2 - Full Fix + Button 2x2 Sejajar + Logo Gagal Tetap Share + X @jogcorp
+# api/index.py - JogjaLend Bot V117.6 - NO THREADS - Channel + X Fail-Safe (X Banned Tetap Share ke Channel) + Button 2x2 + X @jogcorp
 from flask import Flask, request, jsonify
 import os, requests, io, re, traceback, copy, time, hmac, hashlib, base64, urllib.parse, secrets, json
 from datetime import datetime, timezone, timedelta
@@ -20,10 +20,6 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID") or "@menfessangel"
 ADMIN_ID = os.getenv("ADMIN_ID") or ""
 DATABASE_URL = os.getenv("DATABASE_URL")
-THREADS_URL = os.getenv("THREADS") or "https://threads.net/jogjalend"
-THREADS_USER_ID = os.getenv("THREADS_USER_ID")
-THREADS_TOKEN = os.getenv("THREADS_TOKEN")
-MAIN_THREAD_ID = os.getenv("MAIN_THREAD_ID")
 LOG_CHANNEL = os.getenv("LOG_CHANNEL") or CHANNEL_ID
 WIB = timezone(timedelta(hours=7))
 SEP = "●-----------------------------------------------------●"
@@ -45,7 +41,7 @@ TG.headers.update({"Connection": "keep-alive"})
 BASE_TG = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 SETTINGS_CACHE = {}
-USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0, "admin_target": "both", "warn": 0, "waiting_proof": False, "x_premium_until": "", "x_auto": True})
+USERS = defaultdict(lambda: {"name": "", "username": "", "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0, "warn": 0, "waiting_proof": False, "x_premium_until": "", "x_auto": True})
 
 _db_pool = None
 def get_pool():
@@ -84,7 +80,7 @@ def init_db():
     if not db: return
     try:
         cur = db.cursor()
-        cur.execute("CREATE TABLE IF NOT EXISTS menfess_users (user_id TEXT PRIMARY KEY, name TEXT, username TEXT, threads_on BOOLEAN DEFAULT FALSE, today_text INT DEFAULT 0, today_media INT DEFAULT 0, last_date TEXT, banned BOOLEAN DEFAULT FALSE, total_text INT DEFAULT 0, total_media INT DEFAULT 0, total_chars INT DEFAULT 0, admin_target TEXT DEFAULT 'both', warn INT DEFAULT 0)")
+        cur.execute("CREATE TABLE IF NOT EXISTS menfess_users (user_id TEXT PRIMARY KEY, name TEXT, username TEXT, today_text INT DEFAULT 0, today_media INT DEFAULT 0, last_date TEXT, banned BOOLEAN DEFAULT FALSE, total_text INT DEFAULT 0, total_media INT DEFAULT 0, total_chars INT DEFAULT 0, warn INT DEFAULT 0)")
         cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS x_premium_until TEXT DEFAULT ''")
         cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS waiting_proof BOOLEAN DEFAULT FALSE")
         cur.execute("ALTER TABLE menfess_users ADD COLUMN IF NOT EXISTS x_auto BOOLEAN DEFAULT TRUE")
@@ -235,9 +231,22 @@ def post_to_x(text_content, photo_bytes=None, is_video=False):
             except:
                 pass
             return True, None
+        # 401 / 403 = token invalid / akun ke-banned / suspended - jangan lempar error
+        print(f"X post failed {r.status_code}: {r.text[:300]}")
         return False, None
     except Exception as e:
-        print(f"X post error: {e}")
+        print(f"X post error (ditahan, channel tetap jalan): {e}")
+        return False, None
+
+# V117.6 - FAIL-SAFE WRAPPER: X gagal apapun alasannya, JANGAN PERNAH gagalkan Channel
+def safe_post_to_x(text_content, photo_bytes=None, is_video=False):
+    try:
+        if get_setting('x_auto_share', 'off') != 'on':
+            return False, None
+        ok, url = post_to_x(text_content, photo_bytes, is_video)
+        return ok, url
+    except Exception as e:
+        print(f"safe_post_to_x ditahan: {e}")
         return False, None
 
 _X_MY_ID = None
@@ -259,7 +268,6 @@ def auto_retweet_hashtag():
         last_id = get_setting('last_retweet_id', '0')
         my_id = _x_get_my_id()
         if not my_id: return "Failed to get my X user ID"
-        # V117.4.2 FIX: Akun resmi @jogcorp
         query = f"{RETWEET_HASHTAG} -is:retweet -is:reply -from:{X_USERNAME}"
         url = "https://api.twitter.com/2/tweets/search/recent"
         params = {"query": query, "max_results": 10, "tweet.fields": "author_id,created_at"}
@@ -326,9 +334,9 @@ def load_user_from_db(uid):
     if not db: return None
     try:
         cur = db.cursor()
-        cur.execute("SELECT name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target, warn, x_premium_until, waiting_proof, x_auto FROM menfess_users WHERE user_id=%s", (uid,))
+        cur.execute("SELECT name, username, today_text, today_media, last_date, banned, total_text, total_media, total_chars, warn, x_premium_until, waiting_proof, x_auto FROM menfess_users WHERE user_id=%s", (uid,))
         row = cur.fetchone(); cur.close()
-        if row: return {"name": row[0] or "", "username": row[1] or "", "threads_on": row[2] or False, "today_text": row[3] or 0, "today_media": row[4] or 0, "last_date": row[5] or "", "banned": row[6] or False, "total_text": row[7] or 0, "total_media": row[8] or 0, "total_chars": row[9] or 0, "admin_target": row[10] or "both", "warn": row[11] or 0, "x_premium_until": row[12] or "", "waiting_proof": row[13] or False, "x_auto": row[14] if row[14] is not None else True}
+        if row: return {"name": row[0] or "", "username": row[1] or "", "today_text": row[2] or 0, "today_media": row[3] or 0, "last_date": row[4] or "", "banned": row[5] or False, "total_text": row[6] or 0, "total_media": row[7] or 0, "total_chars": row[8] or 0, "warn": row[9] or 0, "x_premium_until": row[10] or "", "waiting_proof": row[11] or False, "x_auto": row[12] if row[12] is not None else True}
     except: return None
     finally: release_db(db)
     return None
@@ -338,7 +346,7 @@ def save_user_to_db(uid, user):
     if not db: return
     try:
         cur = db.cursor()
-        cur.execute("INSERT INTO menfess_users (user_id, name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target, warn, x_premium_until, waiting_proof, x_auto) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (user_id) DO UPDATE SET name=%s, username=%s, threads_on=%s, today_text=%s, today_media=%s, last_date=%s, banned=%s, total_text=%s, total_media=%s, total_chars=%s, admin_target=%s, warn=%s, x_premium_until=%s, waiting_proof=%s, x_auto=%s", (uid, user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars", 0), user.get("admin_target", "both"), user.get("warn", 0), user.get("x_premium_until",""), user.get("waiting_proof", False), user.get("x_auto", True), user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars", 0), user.get("admin_target", "both"), user.get("warn", 0), user.get("x_premium_until",""), user.get("waiting_proof", False), user.get("x_auto", True)))
+        cur.execute("INSERT INTO menfess_users (user_id, name, username, today_text, today_media, last_date, banned, total_text, total_media, total_chars, warn, x_premium_until, waiting_proof, x_auto) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (user_id) DO UPDATE SET name=%s, username=%s, today_text=%s, today_media=%s, last_date=%s, banned=%s, total_text=%s, total_media=%s, total_chars=%s, warn=%s, x_premium_until=%s, waiting_proof=%s, x_auto=%s", (uid, user["name"], user["username"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars", 0), user.get("warn", 0), user.get("x_premium_until",""), user.get("waiting_proof", False), user.get("x_auto", True), user["name"], user["username"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars", 0), user.get("warn", 0), user.get("x_premium_until",""), user.get("waiting_proof", False), user.get("x_auto", True)))
         db.commit(); cur.close()
     except: pass
     finally: release_db(db)
@@ -428,13 +436,13 @@ def get_welcome_text(user):
 
 def get_back_keyboard(): return {"inline_keyboard": [[{"text": "Back", "callback_data": "back_home"}]]}
 def get_main_keyboard(is_ad=False):
-    kb = {"inline_keyboard": [[{"text": "👤 My Profile", "callback_data": "my_profile"}, {"text": "💌 Post", "callback_data": "post"}], [{"text": "📧 Threads Setting", "callback_data": "threads"}], [{"text": "𝕏 X Premium", "callback_data": "x_premium"}], [{"text": "📈 Stats", "callback_data": "stats"}, {"text": "ℹ️ Bot Info", "callback_data": "info_bot"}]]}
+    kb = {"inline_keyboard": [[{"text": "👤 My Profile", "callback_data": "my_profile"}, {"text": "💌 Post", "callback_data": "post"}], [{"text": "𝕏 X Premium", "callback_data": "x_premium"}], [{"text": "📈 Stats", "callback_data": "stats"}, {"text": "ℹ️ Bot Info", "callback_data": "info_bot"}]]}
     if is_ad: kb["inline_keyboard"].append([{"text": "🔧 ADMIN PANEL", "callback_data": "admin_panel"}])
     return kb
 def get_menu_1():
     return {"inline_keyboard": [[{"text": "🔔 Tag", "callback_data": "lend_tag"}], [{"text": "📥 Approval Mode", "callback_data": "lend_persetujuan"}], [{"text": "🗑️ Delete Message", "callback_data": "lend_hapus"}], [{"text": "🇮🇩 Language", "callback_data": "lend_lang"}, {"text": "✅ Close", "callback_data": "close"}], [{"text": "▶️ More", "callback_data": "lend_page2"}]]}
 def get_menu_2():
-    return {"inline_keyboard": [[{"text": "📜 Rules", "callback_data": "lend_peraturan"}], [{"text": "⚠️ Warnings", "callback_data": "lend_peringatan"}], [{"text": "🚫 Blacklist", "callback_data": "lend_blacklist"}], [{"text": "🔐 Permissions", "callback_data": "lend_izin"}, {"text": "📋 Channel Log", "callback_data": "lend_log"}], [{"text": "🎯 Channel Management", "callback_data": "lend_channel"}], [{"text": "⬅️ Back", "callback_data": "lend_page1"}, {"text": "❌ Close", "callback_data": "close"}]]}
+    return {"inline_keyboard": [[{"text": "📜 Rules", "callback_data": "lend_peraturan"}], [{"text": "⚠️ Warnings", "callback_data": "lend_peringatan"}], [{"text": "🚫 Blacklist", "callback_data": "lend_blacklist"}], [{"text": "🔐 Permissions", "callback_data": "lend_izin"}, {"text": "📋 Channel Log", "callback_data": "lend_log"}], [{"text": "⬅️ Back", "callback_data": "lend_page1"}, {"text": "❌ Close", "callback_data": "close"}]]}
 
 def get_admin_panel():
     x_on = get_setting('x_auto_share', 'off') == 'on'
@@ -444,7 +452,6 @@ def get_admin_panel():
     return {"inline_keyboard": [
         [{"text": "👥 User List", "callback_data": "admin_users"}, {"text": "📊 All Stats", "callback_data": "admin_allstats"}],
         [{"text": "📢 Broadcast", "callback_data": "admin_broadcast"}, {"text": "🚫 Ban/Unban", "callback_data": "lend_blacklist"}],
-        [{"text": "🎯 Channel Target", "callback_data": "lend_channel"}],
         [{"text": x_label, "callback_data": "admin_x_toggle"}],
         [{"text": rt_label, "callback_data": "admin_rt_toggle"}],
         [{"text": "🧪 Test Post to X", "callback_data": "admin_x_test"}, {"text": "🔁 Test Retweet", "callback_data": "admin_rt_test"}],
@@ -452,10 +459,6 @@ def get_admin_panel():
         [{"text": "⚙️ Bot Settings", "callback_data": "lend_page1"}],
         [{"text": "⬅️ Back", "callback_data": "back_home"}]
     ]}
-
-def get_channel_target_keyboard(user):
-    target = user.get("admin_target", "both")
-    return {"inline_keyboard": [[{"text": f"📍 Target: {target.upper()}", "callback_data": "admin_noop"}], [{"text": f"{'✅ ' if target=='channel' else ''}📢 Channel Only", "callback_data": "admin_set_channel"}, {"text": f"{'✅ ' if target=='threads' else ''}🧵 Threads Only", "callback_data": "admin_set_threads"}], [{"text": f"{'✅ ' if target=='both' else ''}🚀 Both (Channel+Threads)", "callback_data": "admin_set_both"}], [{"text": "⬅️ Back", "callback_data": "admin_panel"}]]}
 
 _LOGO_CACHED = None
 def get_logo_cached():
@@ -573,29 +576,15 @@ def send_stats(chat_id, user, mode="today"):
         send_message(chat_id, cap, kb)
     except: pass
 
-def post_to_threads(text_content):
-    try:
-        if not THREADS_USER_ID or not THREADS_TOKEN: return False
-        data = {"media_type": "TEXT", "text": text_content[:450], "access_token": THREADS_TOKEN}
-        if MAIN_THREAD_ID: data["reply_to_id"] = MAIN_THREAD_ID
-        r = TG.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads", data=data, timeout=3).json()
-        cid = r.get("id")
-        if not cid: return False
-        r2 = TG.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish", data={"creation_id": cid, "access_token": THREADS_TOKEN}, timeout=3).json()
-        return "id" in r2
-    except: return False
-
-# V117.4.2 - BUTTON SEJAJAR 2x2 - FIX UTAMA
-def send_success(chat_id, user, ch_msg_id, target="both", x_url=None):
+# V117.6 - Sukses 2x2, X gagal tetap tampil Channel, ada keterangan X Failed buat admin
+def send_success(chat_id, user, ch_msg_id, target="channel", x_url=None, x_failed=False):
     try:
         url = f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_msg_id}" if ch_msg_id else f"https://t.me/{CHANNEL_ID.replace('@','')}"
-        # Baris 1: View Channel | View X - teks dipendekin biar muat sejajar, gak kepotong
         row1 = []
-        if target in ["channel", "both"] and ch_msg_id:
+        if ch_msg_id:
             row1.append({"text": "View Channel", "url": url})
         if x_url:
             row1.append({"text": "View X", "url": x_url})
-        # Baris 2: Delete | Back - selalu 1 baris, sejajar
         row2 = []
         if ch_msg_id:
             row2.append({"text": "Delete", "callback_data": f"del_{ch_msg_id}"})
@@ -603,11 +592,12 @@ def send_success(chat_id, user, ch_msg_id, target="both", x_url=None):
         buttons = []
         if row1: buttons.append(row1)
         if row2: buttons.append(row2)
-        note = f" -> {target.upper()}" if is_admin(chat_id) else ""
-        if is_premium_active(user) and user.get("x_auto", True) and get_setting('x_auto_share', 'off') == 'on':
+        note = ""
+        if x_url:
             note += " + X"
-        if is_admin(chat_id) and get_setting('x_auto_share', 'off') == 'on':
-            if " + X" not in note: note += " + X"
+        elif x_failed:
+            # X gagal / banned, tapi Channel tetap sukses - jangan bikin user panik, cuma info kecil
+            note += " (X Failed, Channel OK)"
         send_message(chat_id, f"Menfess successfully sent!{note}\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5", {"inline_keyboard": buttons})
     except Exception as e: print(f"send_success error: {e}")
 
@@ -679,7 +669,7 @@ def handle_admin_command(chat_id, text):
         return True
     if text.startswith("/x_test"):
         ok, _x_url = post_to_x(f"Test JogjaLend Bot - X Auto Share ON {datetime.now(WIB).strftime('%H:%M')}")
-        send_message(chat_id, M(f"X Test: {'SUCCESSFUL ✅' if ok else 'FAILED ❌ - Please check the X ENV in Vercel / Logs'}"))
+        send_message(chat_id, M(f"X Test: {'SUCCESSFUL ✅' if ok else 'FAILED ❌ - Please check the X ENV in Vercel / Logs - Channel tetap jalan, X saja yang gagal'}"))
         return True
     if text.startswith("/rt_test"):
         res = auto_retweet_hashtag()
@@ -763,7 +753,7 @@ def cron_retweet():
 def main_handler():
     data = {}; where = "init"
     try:
-        if request.method == "GET": return "JogjaLend Bot V117.4.2 OK", 200
+        if request.method == "GET": return "JogjaLend Bot V117.6 OK", 200
         where = "parse_json"; data = request.get_json(force=True, silent=True) or {}
         upd_id = data.get("update_id")
         if upd_id is not None:
@@ -820,18 +810,25 @@ def main_handler():
                             send_message(LOG_CHANNEL, f"📥 PENDING MENFESS\nFrom: {user['name']} (@{user['username']})\nKey: {pid}\n{SEP}\n{clean}", kb_appr)
                             send_message(chat_id, f"Your menfess has been submitted for administrator approval.\n{SEP}\nPlease wait for confirmation.", get_back_keyboard())
                             return "ok", 200
-                        target = user.get("admin_target", "both") if is_admin(chat_id) else ("both" if user.get("threads_on") else "channel")
+                        # V117.6 - URUTAN WAJIB: 1. Channel dulu, 2. X terakhir + fail-safe
                         ch_id = None
                         x_url = None
-                        if target in ["channel", "both"]:
+                        x_failed = False
+                        should_post_x = (is_admin(chat_id) or (is_premium_active(user) and user.get("x_auto", True)))
+                        # 1. CHANNEL - TIDAK PERNAH DIBATALKAN OLEH X
+                        try:
                             r = TG.post(f"{BASE_TG}/sendMessage", json={"chat_id": CHANNEL_ID, "text": clean, "parse_mode": "HTML"}, timeout=3).json()
                             ch_id = r.get("result", {}).get("message_id")
                             save_post_owner(ch_id, uid)
-                        if target in ["threads", "both"]: post_to_threads(clean)
-                        if (is_admin(chat_id) or (is_premium_active(user) and user.get("x_auto", True))) and get_setting('x_auto_share', 'off') == 'on':
-                            _ok_x, x_url = post_to_x(clean)
+                        except Exception as e:
+                            print(f"Channel text failed: {e}")
+                        # 2. X - KALAU GAGAL / BANNED, CUMA TANDAI, JANGAN GAGALKAN CHANNEL
+                        if should_post_x:
+                            _ok_x, x_url = safe_post_to_x(clean)
+                            if not _ok_x and get_setting('x_auto_share', 'off') == 'on':
+                                x_failed = True
                         user["today_text"] += 1; user["total_text"] += 1; user["total_chars"] = user.get("total_chars", 0)+len(text)
-                        save_user_to_db(uid, user); send_success(chat_id, user, ch_id, target, x_url)
+                        save_user_to_db(uid, user); send_success(chat_id, user, ch_id, "channel", x_url, x_failed)
                 if "photo" in msg or "video" in msg:
                     if caption and any(w in caption.lower() for w in ["bukti", "transfer", "tf ", "qris", "struk", "receipt"]):
                         send_message(chat_id, "This appears to be a payment receipt, not a menfess. Payment receipts will not be published to the channel. Please submit your receipt through the X Premium menu.", get_back_keyboard())
@@ -854,11 +851,13 @@ def main_handler():
                             send_message(LOG_CHANNEL, f"📥 PENDING MENFESS - Key: {pid}\nFrom: {user['name']} (@{user['username']})", kb_appr)
                             send_message(chat_id, "Your media has been submitted for administrator approval.\nPlease wait for confirmation.", get_back_keyboard())
                             return "ok", 200
-                        target = user.get("admin_target", "both") if is_admin(chat_id) else ("both" if user.get("threads_on") else "channel")
+                        # V117.6 - URUTAN WAJIB MEDIA: 1. Channel dulu, 2. X terakhir + fail-safe
                         ch_id = None
                         wm_bytes = None
                         x_url = None
+                        x_failed = False
                         raw = None
+                        should_post_x = (is_admin(chat_id) or (is_premium_active(user) and user.get("x_auto", True)))
                         if is_photo:
                             raw = download_file(fid)
                             wm = add_watermark(raw) if raw else None
@@ -868,7 +867,8 @@ def main_handler():
                             else:
                                 print("Logo gagal nempel, pakai foto asli, tetap share ke X")
                                 wm_bytes = raw
-                        if target in ["channel", "both"]:
+                        # 1. CHANNEL
+                        try:
                             if is_photo:
                                 if wm_bytes:
                                     r = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": base_cap, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", io.BytesIO(wm_bytes), "image/jpeg")}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
@@ -877,18 +877,26 @@ def main_handler():
                             else:
                                 r = TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
                             save_post_owner(ch_id, uid)
-                        if target in ["threads", "both"]: post_to_threads(base_cap)
-                        if (is_admin(chat_id) or (is_premium_active(user) and user.get("x_auto", True))) and get_setting('x_auto_share', 'off') == 'on':
+                        except Exception as e:
+                            print(f"Channel media failed: {e}")
+                        # 2. X - FAIL-SAFE
+                        if should_post_x:
                             if is_photo:
-                                _ok_x, x_url = post_to_x(base_cap, wm_bytes, is_video=False)
+                                _ok_x, x_url = safe_post_to_x(base_cap, wm_bytes, is_video=False)
                             else:
-                                video_bytes = download_file(fid)
-                                if video_bytes:
-                                    _ok_x, x_url = post_to_x(base_cap, video_bytes, is_video=True)
-                                else:
-                                    _ok_x, x_url = post_to_x(base_cap)
+                                try:
+                                    video_bytes = download_file(fid)
+                                    if video_bytes:
+                                        _ok_x, x_url = safe_post_to_x(base_cap, video_bytes, is_video=True)
+                                    else:
+                                        _ok_x, x_url = safe_post_to_x(base_cap)
+                                except Exception as e:
+                                    print(f"X video fail-safe: {e}")
+                                    _ok_x, x_url = False, None
+                            if not _ok_x and get_setting('x_auto_share', 'off') == 'on':
+                                x_failed = True
                         user["today_media"] += 1; user["total_media"] += 1
-                        save_user_to_db(uid, user); send_success(chat_id, user, ch_id, target, x_url)
+                        save_user_to_db(uid, user); send_success(chat_id, user, ch_id, "channel", x_url, x_failed)
         if "callback_query" in data:
             cq = data["callback_query"]; chat_id = cq["message"]["chat"]["id"]; uid = str(chat_id); cdata = cq["data"]; msg_id = cq["message"]["message_id"]
             where = f"callback {cdata}"
@@ -913,15 +921,8 @@ def main_handler():
             elif cdata == "lend_page2": edit_message_fast(chat_id, msg_id, M("Please select one of the settings you would like to change."), get_menu_2())
             elif cdata == "my_profile": edit_message_fast(chat_id, msg_id, f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5\nHashtag: {HASHTAG}\nX Premium: {'ACTIVE until '+user.get('x_premium_until','') if is_premium_active(user) else 'Not active'}", get_back_keyboard())
             elif cdata == "post": edit_message_fast(chat_id, msg_id, f"Post Menfess\n{SEP}\nPlease type your text directly, or send media with a caption.\nHashtag will be added automatically: {HASHTAG}", get_back_keyboard())
-            elif cdata == "threads":
-                kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
-                edit_message_fast(chat_id, msg_id, f"Threads Settings\n{SEP}\nStatus: {'ON' if user.get('threads_on') else 'OFF'}\nLink: threads.net/jogjalend", kb)
-            elif cdata == "threads_toggle":
-                user["threads_on"] = not user.get("threads_on", False); save_user_to_db(uid, user)
-                kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
-                edit_message_fast(chat_id, msg_id, f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend", kb)
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V117.4.2\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V117.6\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
             elif cdata == "x_premium":
                 if is_premium_active(user):
                     auto = "ON" if user.get("x_auto", True) else "OFF"
@@ -972,18 +973,19 @@ def main_handler():
                             x_url_appr = None
                             if pend.get("type") == "text":
                                 txt = pend.get("text", "")
-                                rr = TG.post(f"{BASE_TG}/sendMessage", json={"chat_id": CHANNEL_ID, "text": txt, "parse_mode": "HTML"}, timeout=3).json()
-                                ch_mid = rr.get("result", {}).get("message_id")
-                                save_post_owner(ch_mid, owner_id)
-                                if get_setting('x_auto_share', 'off') == 'on':
-                                    try:
-                                        _ok_appr, x_url_appr = post_to_x(txt)
-                                    except: x_url_appr = None
+                                # V117.6 - Approval juga: Channel dulu, X fail-safe
+                                try:
+                                    rr = TG.post(f"{BASE_TG}/sendMessage", json={"chat_id": CHANNEL_ID, "text": txt, "parse_mode": "HTML"}, timeout=3).json()
+                                    ch_mid = rr.get("result", {}).get("message_id")
+                                    save_post_owner(ch_mid, owner_id)
+                                except Exception as e:
+                                    print(f"Approval channel failed: {e}")
+                                    ch_mid = None
+                                _ok_appr, x_url_appr = safe_post_to_x(txt)
                                 try:
                                     ou = get_user(str(owner_id)); ou["today_text"] += 1; ou["total_text"] += 1; save_user_to_db(str(owner_id), ou)
                                 except: pass
                                 if owner_id:
-                                    # V117.4.2 - approval juga 2x2 sejajar
                                     row1_appr = []
                                     if ch_mid: row1_appr.append({"text": "View Channel", "url": f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_mid}"})
                                     if x_url_appr: row1_appr.append({"text": "View X", "url": x_url_appr})
@@ -992,30 +994,36 @@ def main_handler():
                             else:
                                 fid2 = pend.get("file_id", ""); cap2 = pend.get("caption", "")
                                 media_for_x = None
-                                if pend.get("type") == "photo":
-                                    raw2 = download_file(fid2)
-                                    wm2 = add_watermark(raw2) if raw2 else None
-                                    if wm2:
-                                        wm2.seek(0); media_for_x = wm2.read()
-                                        rr = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": cap2, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", io.BytesIO(media_for_x), "image/jpeg")}, timeout=5).json()
-                                    else:
-                                        media_for_x = raw2
-                                        rr = TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid2, "caption": cap2, "parse_mode": "HTML"}, timeout=5).json()
-                                else:
-                                    rr = TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid2, "caption": cap2, "parse_mode": "HTML"}, timeout=5).json()
-                                ch_mid = rr.get("result", {}).get("message_id")
-                                save_post_owner(ch_mid, owner_id)
-                                if get_setting('x_auto_share', 'off') == 'on':
-                                    try:
-                                        if pend.get("type") == "photo":
-                                            _ok_appr, x_url_appr = post_to_x(cap2, media_for_x, is_video=False)
+                                ch_mid = None
+                                try:
+                                    if pend.get("type") == "photo":
+                                        raw2 = download_file(fid2)
+                                        wm2 = add_watermark(raw2) if raw2 else None
+                                        if wm2:
+                                            wm2.seek(0); media_for_x = wm2.read()
+                                            rr = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": cap2, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", io.BytesIO(media_for_x), "image/jpeg")}, timeout=5).json()
                                         else:
-                                            vbytes = download_file(fid2)
-                                            if vbytes:
-                                                _ok_appr, x_url_appr = post_to_x(cap2, vbytes, is_video=True)
-                                            else:
-                                                _ok_appr, x_url_appr = post_to_x(cap2)
-                                    except: x_url_appr = None
+                                            media_for_x = raw2
+                                            rr = TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid2, "caption": cap2, "parse_mode": "HTML"}, timeout=5).json()
+                                    else:
+                                        rr = TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid2, "caption": cap2, "parse_mode": "HTML"}, timeout=5).json()
+                                    ch_mid = rr.get("result", {}).get("message_id")
+                                    save_post_owner(ch_mid, owner_id)
+                                except Exception as e:
+                                    print(f"Approval channel media failed: {e}")
+                                # X fail-safe
+                                try:
+                                    if pend.get("type") == "photo":
+                                        _ok_appr, x_url_appr = safe_post_to_x(cap2, media_for_x, is_video=False)
+                                    else:
+                                        vbytes = download_file(fid2)
+                                        if vbytes:
+                                            _ok_appr, x_url_appr = safe_post_to_x(cap2, vbytes, is_video=True)
+                                        else:
+                                            _ok_appr, x_url_appr = safe_post_to_x(cap2)
+                                except Exception as e:
+                                    print(f"Approval X fail-safe: {e}")
+                                    x_url_appr = None
                                 try:
                                     ou = get_user(str(owner_id)); ou["today_media"] += 1; ou["total_media"] += 1; save_user_to_db(str(owner_id), ou)
                                 except: pass
@@ -1030,7 +1038,7 @@ def main_handler():
                             edit_message_fast(chat_id, msg_id, "Rejected.", get_admin_panel())
                             if owner_id: send_message(owner_id, "Your menfess was rejected by the administrator.", get_back_keyboard())
             elif cdata == "admin_panel":
-                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V117.4.2\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
+                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V117.6\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
             elif cdata == "admin_users":
                 send_user_list(chat_id)
@@ -1072,7 +1080,7 @@ def main_handler():
                     edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
                 else:
                     ok, _x_url_test = post_to_x(f"Test JogjaLend Bot X Auto Share {datetime.now(WIB).strftime('%H:%M')}")
-                    edit_message_fast(chat_id, msg_id, M(f"X Test: {'SUCCESSFUL ✅ - Please check your X account' if ok else 'FAILED ❌ - Please check the X ENV / Basic Plan / Vercel Logs'}"), get_admin_panel())
+                    edit_message_fast(chat_id, msg_id, M(f"X Test: {'SUCCESSFUL ✅ - Please check your X account' if ok else 'FAILED ❌ - Please check the X ENV / Basic Plan / Vercel Logs - Channel tetap jalan'}"), get_admin_panel())
             elif cdata == "admin_rt_test":
                 if not is_admin(chat_id):
                     edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
@@ -1108,15 +1116,6 @@ def main_handler():
                 edit_message_fast(chat_id, msg_id, M(txt), kb)
             elif cdata == "lend_izin": edit_message_fast(chat_id, msg_id, M("Permissions\n------------------------------\nAll users may post text/media (maximum 5). Admins may ban or warn users."), get_menu_2())
             elif cdata == "lend_log": edit_message_fast(chat_id, msg_id, M(f"Channel Log\n------------------------------\nLog Channel: {LOG_CHANNEL}\nErrors and approvals will be sent here."), get_menu_2())
-            elif cdata == "lend_channel":
-                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M(f"Channel Management\n------------------------------\nPlease select a posting target.\nCurrent: {user.get('admin_target','both').upper()}"), get_channel_target_keyboard(user))
-                else: edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
-            elif cdata == "admin_set_channel":
-                if is_admin(chat_id): user["admin_target"] = "channel"; save_user_to_db(uid, user); edit_message_fast(chat_id, msg_id, M(f"Set to CHANNEL ONLY\n------------------------------\nMenfess will only be sent to {CHANNEL_ID}"), get_channel_target_keyboard(user))
-            elif cdata == "admin_set_threads":
-                if is_admin(chat_id): user["admin_target"] = "threads"; save_user_to_db(uid, user); edit_message_fast(chat_id, msg_id, M(f"Set to THREADS ONLY\n------------------------------\nMenfess will only be sent to Threads"), get_channel_target_keyboard(user))
-            elif cdata == "admin_set_both":
-                if is_admin(chat_id): user["admin_target"] = "both"; save_user_to_db(uid, user); edit_message_fast(chat_id, msg_id, M(f"Set to BOTH\n------------------------------\nMenfess will be sent to Channel + Threads"), get_channel_target_keyboard(user))
             elif cdata.startswith("del_"):
                 try:
                     mid = int(cdata.replace("del_", ""))
@@ -1150,7 +1149,7 @@ def catch_all(path):
         except:
             pass
         return main_handler()
-    return "JogjaLend Bot V117.4.2 OK", 200
+    return "JogjaLend Bot V117.6 OK", 200
 
 if __name__ == "__main__":
     app.run()
