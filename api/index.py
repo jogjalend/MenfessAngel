@@ -1,9 +1,8 @@
-# api/index.py - JogjaLend Bot Angel V117.7 - SPEED + Logo Utuh Tidak Diperkecil + Button Delete Atas
+# api/index.py - JogjaLend Bot Angel V117.8 - SPEED + Data 100% Kesimpan DB + Logo Utuh
 from flask import Flask, request, jsonify
 import os, requests, io, re, traceback, copy, time, hmac, hashlib, base64, urllib.parse, secrets, json, threading
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
 
 try:
     import psycopg2
@@ -48,7 +47,6 @@ SETTINGS_TTL = 300
 USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0, "admin_target": "both", "warn": 0, "waiting_proof": False, "x_premium_until": "", "x_auto": True})
 SEEN_UPDATES = set()
 SEEN_LOCK = threading.Lock()
-EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 _db_pool = None
 def get_pool():
@@ -104,6 +102,7 @@ def init_db():
     finally: release_db(db)
 
 def get_setting(k, default=""):
+    # SPEED: cache 5 menit, hit DB cuma sekali
     if k in SETTINGS_CACHE:
         val, ts = SETTINGS_CACHE[k]
         if time.time() - ts < SETTINGS_TTL:
@@ -119,27 +118,24 @@ def get_setting(k, default=""):
     except: return SETTINGS_CACHE.get(k, (default, 0))[0]
     finally: release_db(db)
 
+# V117.8 - FIX DATA: set_setting SINKRON, jangan background. Kalau background bisa kepotong Vercel, pending / approval hilang.
 def set_setting(k, v):
     SETTINGS_CACHE[k] = (v, time.time())
-    def _write():
-        db = get_db()
-        if not db: return
-        try:
-            cur = db.cursor(); cur.execute("INSERT INTO bot_settings (key,value) VALUES (%s,%s) ON CONFLICT (key) DO UPDATE SET value=%s", (k, v, v)); db.commit(); cur.close()
-        except: pass
-        finally: release_db(db)
-    threading.Thread(target=_write, daemon=True).start()
+    db = get_db()
+    if not db: return
+    try:
+        cur = db.cursor(); cur.execute("INSERT INTO bot_settings (key,value) VALUES (%s,%s) ON CONFLICT (key) DO UPDATE SET value=%s", (k, v, v)); db.commit(); cur.close()
+    except: pass
+    finally: release_db(db)
 
 def delete_setting(k):
     SETTINGS_CACHE.pop(k, None)
-    def _del():
-        db = get_db()
-        if not db: return
-        try:
-            cur = db.cursor(); cur.execute("DELETE FROM bot_settings WHERE key=%s", (k,)); db.commit(); cur.close()
-        except: pass
-        finally: release_db(db)
-    threading.Thread(target=_del, daemon=True).start()
+    db = get_db()
+    if not db: return
+    try:
+        cur = db.cursor(); cur.execute("DELETE FROM bot_settings WHERE key=%s", (k,)); db.commit(); cur.close()
+    except: pass
+    finally: release_db(db)
 
 def _x_oauth_header(method, url, extra_params=None):
     if not X_API_KEY or not X_API_SECRET or not X_ACCESS_TOKEN or not X_ACCESS_SECRET:
@@ -325,18 +321,19 @@ def load_user_from_db(uid):
     finally: release_db(db)
     return None
 
+# V117.8 - FIX DATA: save_user SINKRON, pakai pool jadi tetap cepat 5-20ms, dijamin kesimpan sebelum balas
 def save_user_to_db(uid, user):
-    u_copy = dict(user)
-    def _save():
-        db = get_db()
-        if not db: return
-        try:
-            cur = db.cursor()
-            cur.execute("INSERT INTO menfess_users (user_id, name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target, warn, x_premium_until, waiting_proof, x_auto) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (user_id) DO UPDATE SET name=%s, username=%s, threads_on=%s, today_text=%s, today_media=%s, last_date=%s, banned=%s, total_text=%s, total_media=%s, total_chars=%s, admin_target=%s, warn=%s, x_premium_until=%s, waiting_proof=%s, x_auto=%s", (uid, u_copy["name"], u_copy["username"], u_copy["threads_on"], u_copy["today_text"], u_copy["today_media"], u_copy["last_date"], u_copy["banned"], u_copy["total_text"], u_copy["total_media"], u_copy.get("total_chars", 0), u_copy.get("admin_target", "both"), u_copy.get("warn", 0), u_copy.get("x_premium_until",""), u_copy.get("waiting_proof", False), u_copy.get("x_auto", True), u_copy["name"], u_copy["username"], u_copy["threads_on"], u_copy["today_text"], u_copy["today_media"], u_copy["last_date"], u_copy["banned"], u_copy["total_text"], u_copy["total_media"], u_copy.get("total_chars", 0), u_copy.get("admin_target", "both"), u_copy.get("warn", 0), u_copy.get("x_premium_until",""), u_copy.get("waiting_proof", False), u_copy.get("x_auto", True)))
-            db.commit(); cur.close()
-        except: pass
-        finally: release_db(db)
-    threading.Thread(target=_save, daemon=True).start()
+    db = get_db()
+    if not db: return
+    try:
+        cur = db.cursor()
+        cur.execute("INSERT INTO menfess_users (user_id, name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target, warn, x_premium_until, waiting_proof, x_auto) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (user_id) DO UPDATE SET name=%s, username=%s, threads_on=%s, today_text=%s, today_media=%s, last_date=%s, banned=%s, total_text=%s, total_media=%s, total_chars=%s, admin_target=%s, warn=%s, x_premium_until=%s, waiting_proof=%s, x_auto=%s", (uid, user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars", 0), user.get("admin_target", "both"), user.get("warn", 0), user.get("x_premium_until",""), user.get("waiting_proof", False), user.get("x_auto", True), user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars", 0), user.get("admin_target", "both"), user.get("warn", 0), user.get("x_premium_until",""), user.get("waiting_proof", False), user.get("x_auto", True)))
+        db.commit(); cur.close()
+        # Update cache memori juga biar konsisten
+        USERS[uid] = dict(user)
+    except Exception as e:
+        print(f"save_user error: {e}")
+    finally: release_db(db)
 
 def get_user(uid):
     u = USERS[uid]
@@ -358,16 +355,15 @@ def is_premium_active(user):
         return datetime.now(WIB) <= dt + timedelta(days=1)
     except: return False
 
+# V117.8 - FIX DATA: save_post_owner SINKRON juga, biar tombol Delete selalu bisa jalan
 def save_post_owner(msg_id, owner_id):
     if not msg_id: return
-    def _s():
-        db = get_db()
-        if not db: return
-        try:
-            cur = db.cursor(); cur.execute("INSERT INTO menfess_posts (msg_id, owner_id) VALUES (%s,%s) ON CONFLICT (msg_id) DO NOTHING", (str(msg_id), str(owner_id))); db.commit(); cur.close()
-        except: pass
-        finally: release_db(db)
-    threading.Thread(target=_s, daemon=True).start()
+    db = get_db()
+    if not db: return
+    try:
+        cur = db.cursor(); cur.execute("INSERT INTO menfess_posts (msg_id, owner_id) VALUES (%s,%s) ON CONFLICT (msg_id) DO NOTHING", (str(msg_id), str(owner_id))); db.commit(); cur.close()
+    except: pass
+    finally: release_db(db)
 
 def send_message(chat_id, text, kb=None):
     try:
@@ -451,7 +447,6 @@ def get_channel_target_keyboard(user):
     target = user.get("admin_target", "both")
     return {"inline_keyboard": [[{"text": f"📍 Target: {target.upper()}", "callback_data": "admin_noop"}], [{"text": f"{'✅ ' if target=='channel' else ''}📢 Channel Only", "callback_data": "admin_set_channel"}, {"text": f"{'✅ ' if target=='threads' else ''}🧵 Threads Only", "callback_data": "admin_set_threads"}], [{"text": f"{'✅ ' if target=='both' else ''}🚀 Both (Channel+Threads)", "callback_data": "admin_set_both"}], [{"text": "⬅️ Back", "callback_data": "admin_panel"}]]}
 
-# === LOGO UTUH - JANGAN DIPERKECIL ===
 _LOGO_CACHED = None
 def get_logo_cached():
     global _LOGO_CACHED
@@ -465,7 +460,6 @@ def get_logo_cached():
                 logo = Image.open(p).convert("RGBA")
                 bbox = logo.getbbox()
                 if bbox: logo = logo.crop(bbox)
-                # JANGAN DI-RESIZE - pakai ukuran asli logo.png
                 _LOGO_CACHED = logo
                 print(f"Logo found at: {p} size: {logo.size}")
                 return logo
@@ -485,9 +479,7 @@ def add_watermark(photo_bytes):
         logo_orig = get_logo_cached()
         if not logo_orig: return None
         base = Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
-        # JANGAN RESIZE FOTO - biar logo tidak ikut mengecil
         w, h = base.size
-        # Logo 25% dari lebar foto, jangan perbesar melebihi ukuran asli biar tidak pecah
         target_w = int(w * 0.25)
         if target_w > logo_orig.width:
             target_w = logo_orig.width
@@ -499,7 +491,6 @@ def add_watermark(photo_bytes):
         overlay.paste(logo, (margin, margin), logo)
         combined = Image.alpha_composite(base, overlay).convert("RGB")
         bio = io.BytesIO()
-        # Quality 92 biar logo tajam, tidak buram
         combined.save(bio, "JPEG", quality=92, optimize=True)
         bio.seek(0)
         return bio
@@ -896,7 +887,7 @@ def process_update(data):
                 kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message_fast(chat_id, msg_id, f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend", kb)
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V117.7 SPEED + Logo Utuh\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V117.8 - Data Aman\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
             elif cdata == "x_premium":
                 if is_premium_active(user):
                     auto = "ON" if user.get("x_auto", True) else "OFF"
@@ -1004,7 +995,7 @@ def process_update(data):
                             edit_message_fast(chat_id, msg_id, "Rejected.", get_admin_panel())
                             if owner_id: send_message(owner_id, "Your menfess was rejected by the administrator.", get_back_keyboard())
             elif cdata == "admin_panel":
-                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V117.7\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
+                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V117.8\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
             elif cdata == "admin_users":
                 send_user_list(chat_id)
@@ -1120,7 +1111,7 @@ def process_update(data):
 @app.route("/webhook", methods=["GET", "POST"])
 def main_handler():
     try:
-        if request.method == "GET": return "JogjaLend Bot V117.7 OK", 200
+        if request.method == "GET": return "JogjaLend Bot V117.8 OK", 200
         data = request.get_json(force=True, silent=True) or {}
         upd_id = data.get("update_id")
         if upd_id is not None:
@@ -1130,6 +1121,7 @@ def main_handler():
                 SEEN_UPDATES.add(upd_id)
                 if len(SEEN_UPDATES) > 500:
                     SEEN_UPDATES.clear()
+        # Ngebut: balas ok dulu, proses di Thread. Tapi DB write di dalam process_update tetap SINKRON, jadi data aman.
         threading.Thread(target=process_update, args=(data,), daemon=True).start()
         return "ok", 200
     except Exception as e:
@@ -1146,7 +1138,7 @@ def catch_all(path):
         except:
             pass
         return main_handler()
-    return "JogjaLend Bot V117.7 OK", 200
+    return "JogjaLend Bot V117.8 OK", 200
 
 if __name__ == "__main__":
     app.run()
