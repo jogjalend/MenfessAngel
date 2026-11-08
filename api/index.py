@@ -1,8 +1,9 @@
-# api/index.py - JogjaLend Bot Angel V117.4 - Full Fix + Button Sejajar 2x2 + Logo Coba Dulu Gagal Tetap Share + Lightweight
+# api/index.py - JogjaLend Bot Angel V117.7 - SPEED + Logo Utuh Tidak Diperkecil + Button Delete Atas
 from flask import Flask, request, jsonify
-import os, requests, io, re, traceback, copy, time, hmac, hashlib, base64, urllib.parse, secrets, json
+import os, requests, io, re, traceback, copy, time, hmac, hashlib, base64, urllib.parse, secrets, json, threading
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 
 try:
     import psycopg2
@@ -43,7 +44,11 @@ TG.headers.update({"Connection": "keep-alive"})
 BASE_TG = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 SETTINGS_CACHE = {}
+SETTINGS_TTL = 300
 USERS = defaultdict(lambda: {"name": "", "username": "", "threads_on": False, "today_text": 0, "today_media": 0, "last_date": "", "banned": False, "total_text": 0, "total_media": 0, "total_chars": 0, "admin_target": "both", "warn": 0, "waiting_proof": False, "x_premium_until": "", "x_auto": True})
+SEEN_UPDATES = set()
+SEEN_LOCK = threading.Lock()
+EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 _db_pool = None
 def get_pool():
@@ -51,7 +56,7 @@ def get_pool():
     if _db_pool or not DATABASE_URL or not pool:
         return _db_pool
     try:
-        _db_pool = pool.SimpleConnectionPool(1, 5, DATABASE_URL, connect_timeout=2)
+        _db_pool = pool.SimpleConnectionPool(1, 3, DATABASE_URL, connect_timeout=2)
     except:
         _db_pool = None
     return _db_pool
@@ -98,13 +103,10 @@ def init_db():
     except: pass
     finally: release_db(db)
 
-try: init_db()
-except: pass
-
 def get_setting(k, default=""):
     if k in SETTINGS_CACHE:
         val, ts = SETTINGS_CACHE[k]
-        if time.time() - ts < 60:
+        if time.time() - ts < SETTINGS_TTL:
             return val
     db = get_db()
     if not db:
@@ -119,21 +121,25 @@ def get_setting(k, default=""):
 
 def set_setting(k, v):
     SETTINGS_CACHE[k] = (v, time.time())
-    db = get_db()
-    if not db: return
-    try:
-        cur = db.cursor(); cur.execute("INSERT INTO bot_settings (key,value) VALUES (%s,%s) ON CONFLICT (key) DO UPDATE SET value=%s", (k, v, v)); db.commit(); cur.close()
-    except: pass
-    finally: release_db(db)
+    def _write():
+        db = get_db()
+        if not db: return
+        try:
+            cur = db.cursor(); cur.execute("INSERT INTO bot_settings (key,value) VALUES (%s,%s) ON CONFLICT (key) DO UPDATE SET value=%s", (k, v, v)); db.commit(); cur.close()
+        except: pass
+        finally: release_db(db)
+    threading.Thread(target=_write, daemon=True).start()
 
 def delete_setting(k):
     SETTINGS_CACHE.pop(k, None)
-    db = get_db()
-    if not db: return
-    try:
-        cur = db.cursor(); cur.execute("DELETE FROM bot_settings WHERE key=%s", (k,)); db.commit(); cur.close()
-    except: pass
-    finally: release_db(db)
+    def _del():
+        db = get_db()
+        if not db: return
+        try:
+            cur = db.cursor(); cur.execute("DELETE FROM bot_settings WHERE key=%s", (k,)); db.commit(); cur.close()
+        except: pass
+        finally: release_db(db)
+    threading.Thread(target=_del, daemon=True).start()
 
 def _x_oauth_header(method, url, extra_params=None):
     if not X_API_KEY or not X_API_SECRET or not X_ACCESS_TOKEN or not X_ACCESS_SECRET:
@@ -164,38 +170,32 @@ def _x_upload_media(photo_bytes, is_video=False):
         if is_video:
             url_init = "https://upload.twitter.com/1.1/media/upload.json"
             h = _x_oauth_header("POST", url_init)
-            r = TG.post(url_init, headers={"Authorization": h}, data={"command": "INIT", "total_bytes": len(photo_bytes), "media_type": "video/mp4", "media_category": "tweet_video"}, timeout=15)
+            r = TG.post(url_init, headers={"Authorization": h}, data={"command": "INIT", "total_bytes": len(photo_bytes), "media_type": "video/mp4", "media_category": "tweet_video"}, timeout=10)
             j = r.json()
             media_id = j.get("media_id_string")
-            if not media_id:
-                print(f"X video INIT failed: {j}")
-                return None
+            if not media_id: return None
             chunk_size = 1024 * 1024
             for idx in range(0, len(photo_bytes), chunk_size):
                 chunk = photo_bytes[idx:idx+chunk_size]
                 h2 = _x_oauth_header("POST", url_init)
                 files = {"media": ("video.mp4", chunk, "video/mp4")}
-                rr = TG.post(url_init, headers={"Authorization": h2}, data={"command": "APPEND", "media_id": media_id, "segment_index": idx // chunk_size}, files=files, timeout=20)
-                print(f"X video APPEND {idx//chunk_size}: {rr.status_code}")
+                TG.post(url_init, headers={"Authorization": h2}, data={"command": "APPEND", "media_id": media_id, "segment_index": idx // chunk_size}, files=files, timeout=10)
             h3 = _x_oauth_header("POST", url_init)
-            rf = TG.post(url_init, headers={"Authorization": h3}, data={"command": "FINALIZE", "media_id": media_id}, timeout=15)
-            print(f"X video FINALIZE: {rf.status_code} {rf.text[:200]}")
-            for _ in range(10):
+            TG.post(url_init, headers={"Authorization": h3}, data={"command": "FINALIZE", "media_id": media_id}, timeout=10)
+            for _ in range(5):
                 h4 = _x_oauth_header("GET", url_init, {"command": "STATUS", "media_id": media_id})
-                rs = TG.get(url_init, headers={"Authorization": h4}, params={"command": "STATUS", "media_id": media_id}, timeout=10)
+                rs = TG.get(url_init, headers={"Authorization": h4}, params={"command": "STATUS", "media_id": media_id}, timeout=5)
                 st = rs.json().get("processing_info", {}).get("state")
-                print(f"X video STATUS: {st}")
                 if st == "succeeded": break
                 if st == "failed": return None
-                time.sleep(2)
+                time.sleep(1)
             return media_id
         url = "https://upload.twitter.com/1.1/media/upload.json"
         header = _x_oauth_header("POST", url)
         if not header: return None
         files = {"media": ("img.jpg", photo_bytes, "image/jpeg")}
-        r = TG.post(url, headers={"Authorization": header}, files=files, timeout=15)
+        r = TG.post(url, headers={"Authorization": header}, files=files, timeout=10)
         j = r.json()
-        print(f"X photo upload: {r.status_code} {str(j)[:200]}")
         return j.get("media_id_string")
     except Exception as e:
         print(f"X upload error: {e}")
@@ -207,7 +207,6 @@ def post_to_x(text_content, photo_bytes=None, is_video=False):
             return False, None
         BAD = ["judol", "slot", "bokep", "porno", "togel", "gacor", "maxwin"]
         if any(b in (text_content or "").lower() for b in BAD):
-            print("X blocked bad word")
             return False, None
         clean = re.sub(r"<[^>]+>", "", text_content or "").strip()
         if not clean:
@@ -223,8 +222,7 @@ def post_to_x(text_content, photo_bytes=None, is_video=False):
         payload = {"text": clean}
         if media_id:
             payload["media"] = {"media_ids": [media_id]}
-        r = TG.post(url, headers={"Authorization": header, "Content-Type": "application/json"}, json=payload, timeout=10)
-        print(f"X post: {r.status_code}")
+        r = TG.post(url, headers={"Authorization": header, "Content-Type": "application/json"}, json=payload, timeout=8)
         if r.status_code in [200, 201]:
             try:
                 tweet_id = r.json().get("data", {}).get("id")
@@ -245,7 +243,7 @@ def _x_get_my_id():
     try:
         url = "https://api.twitter.com/2/users/me"
         h = _x_oauth_header("GET", url)
-        r = TG.get(url, headers={"Authorization": h}, timeout=10).json()
+        r = TG.get(url, headers={"Authorization": h}, timeout=8).json()
         _X_MY_ID = r.get("data", {}).get("id")
         return _X_MY_ID
     except: return None
@@ -259,14 +257,13 @@ def auto_retweet_hashtag():
         if not my_id: return "Failed to get my X user ID"
         query = f"{RETWEET_HASHTAG} -is:retweet -is:reply -from:jogjalend"
         url = "https://api.twitter.com/2/tweets/search/recent"
-        params = {"query": query, "max_results": 10, "tweet.fields": "author_id,created_at"}
+        params = {"query": query, "max_results": 5, "tweet.fields": "author_id,created_at"}
         if last_id and last_id != "0":
             params["since_id"] = last_id
         h = _x_oauth_header("GET", url, params)
-        r = TG.get(url, headers={"Authorization": h}, params=params, timeout=10)
+        r = TG.get(url, headers={"Authorization": h}, params=params, timeout=8)
         j = r.json()
         if r.status_code != 200:
-            print(f"Search error: {r.status_code} {r.text[:300]}")
             return f"Search failed {r.status_code}"
         tweets = j.get("data", [])
         if not tweets:
@@ -274,7 +271,7 @@ def auto_retweet_hashtag():
         count = 0
         max_id = last_id
         for t in reversed(tweets):
-            if count >= 5:
+            if count >= 3:
                 break
             tid = t["id"]
             if str(t.get("author_id")) == str(my_id):
@@ -282,8 +279,7 @@ def auto_retweet_hashtag():
                 continue
             retweet_url = f"https://api.twitter.com/2/users/{my_id}/retweets"
             h2 = _x_oauth_header("POST", retweet_url)
-            rr = TG.post(retweet_url, headers={"Authorization": h2, "Content-Type": "application/json"}, json={"tweet_id": tid}, timeout=10)
-            print(f"Retweet {tid}: {rr.status_code}")
+            rr = TG.post(retweet_url, headers={"Authorization": h2, "Content-Type": "application/json"}, json={"tweet_id": tid}, timeout=8)
             if rr.status_code in [200, 201]:
                 count += 1
                 if int(tid) > int(max_id or 0): max_id = tid
@@ -293,7 +289,6 @@ def auto_retweet_hashtag():
             set_setting('last_retweet_id', str(max_id))
         return f"Retweeted {count} / {len(tweets)}"
     except Exception as e:
-        print(f"Retweet error: {e}")
         return str(e)
 
 def to_fancy(text):
@@ -331,14 +326,17 @@ def load_user_from_db(uid):
     return None
 
 def save_user_to_db(uid, user):
-    db = get_db()
-    if not db: return
-    try:
-        cur = db.cursor()
-        cur.execute("INSERT INTO menfess_users (user_id, name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target, warn, x_premium_until, waiting_proof, x_auto) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (user_id) DO UPDATE SET name=%s, username=%s, threads_on=%s, today_text=%s, today_media=%s, last_date=%s, banned=%s, total_text=%s, total_media=%s, total_chars=%s, admin_target=%s, warn=%s, x_premium_until=%s, waiting_proof=%s, x_auto=%s", (uid, user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars", 0), user.get("admin_target", "both"), user.get("warn", 0), user.get("x_premium_until",""), user.get("waiting_proof", False), user.get("x_auto", True), user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars", 0), user.get("admin_target", "both"), user.get("warn", 0), user.get("x_premium_until",""), user.get("waiting_proof", False), user.get("x_auto", True)))
-        db.commit(); cur.close()
-    except: pass
-    finally: release_db(db)
+    u_copy = dict(user)
+    def _save():
+        db = get_db()
+        if not db: return
+        try:
+            cur = db.cursor()
+            cur.execute("INSERT INTO menfess_users (user_id, name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target, warn, x_premium_until, waiting_proof, x_auto) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (user_id) DO UPDATE SET name=%s, username=%s, threads_on=%s, today_text=%s, today_media=%s, last_date=%s, banned=%s, total_text=%s, total_media=%s, total_chars=%s, admin_target=%s, warn=%s, x_premium_until=%s, waiting_proof=%s, x_auto=%s", (uid, u_copy["name"], u_copy["username"], u_copy["threads_on"], u_copy["today_text"], u_copy["today_media"], u_copy["last_date"], u_copy["banned"], u_copy["total_text"], u_copy["total_media"], u_copy.get("total_chars", 0), u_copy.get("admin_target", "both"), u_copy.get("warn", 0), u_copy.get("x_premium_until",""), u_copy.get("waiting_proof", False), u_copy.get("x_auto", True), u_copy["name"], u_copy["username"], u_copy["threads_on"], u_copy["today_text"], u_copy["today_media"], u_copy["last_date"], u_copy["banned"], u_copy["total_text"], u_copy["total_media"], u_copy.get("total_chars", 0), u_copy.get("admin_target", "both"), u_copy.get("warn", 0), u_copy.get("x_premium_until",""), u_copy.get("waiting_proof", False), u_copy.get("x_auto", True)))
+            db.commit(); cur.close()
+        except: pass
+        finally: release_db(db)
+    threading.Thread(target=_save, daemon=True).start()
 
 def get_user(uid):
     u = USERS[uid]
@@ -348,9 +346,6 @@ def get_user(uid):
     today = datetime.now(WIB).strftime("%Y-%m-%d")
     if u["last_date"] != today:
         u["today_text"] = 0; u["today_media"] = 0; u["last_date"] = today
-        if u["name"] != "":
-            try: save_user_to_db(uid, u)
-            except: pass
     return u
 
 def is_admin(uid): return str(uid).strip() in [x.strip() for x in ADMIN_ID.split(",") if x.strip()] if ADMIN_ID else False
@@ -365,12 +360,14 @@ def is_premium_active(user):
 
 def save_post_owner(msg_id, owner_id):
     if not msg_id: return
-    db = get_db()
-    if not db: return
-    try:
-        cur = db.cursor(); cur.execute("INSERT INTO menfess_posts (msg_id, owner_id) VALUES (%s,%s) ON CONFLICT (msg_id) DO NOTHING", (str(msg_id), str(owner_id))); db.commit(); cur.close()
-    except: pass
-    finally: release_db(db)
+    def _s():
+        db = get_db()
+        if not db: return
+        try:
+            cur = db.cursor(); cur.execute("INSERT INTO menfess_posts (msg_id, owner_id) VALUES (%s,%s) ON CONFLICT (msg_id) DO NOTHING", (str(msg_id), str(owner_id))); db.commit(); cur.close()
+        except: pass
+        finally: release_db(db)
+    threading.Thread(target=_s, daemon=True).start()
 
 def send_message(chat_id, text, kb=None):
     try:
@@ -382,7 +379,7 @@ def send_message(chat_id, text, kb=None):
                     if "text" in btn and "url" not in btn: btn["text"] = F(btn["text"])
         payload = {"chat_id": chat_id, "text": F(text).replace("<plain>", "").replace("</plain>", ""), "parse_mode": "HTML", "disable_web_page_preview": True}
         if kb_fancy: payload["reply_markup"] = kb_fancy
-        r = TG.post(f"{BASE_TG}/sendMessage", json=payload, timeout=3)
+        r = TG.post(f"{BASE_TG}/sendMessage", json=payload, timeout=2)
         return r.status_code == 200
     except: return False
 
@@ -396,7 +393,7 @@ def edit_message_fast(chat_id, msg_id, text, kb=None):
                     if "text" in btn and "url" not in btn: btn["text"] = F(btn["text"])
         payload = {"chat_id": chat_id, "message_id": msg_id, "text": F(text).replace("<plain>", "").replace("</plain>", ""), "parse_mode": "HTML", "disable_web_page_preview": True}
         if kb_fancy: payload["reply_markup"] = kb_fancy
-        r = TG.post(f"{BASE_TG}/editMessageText", json=payload, timeout=3)
+        r = TG.post(f"{BASE_TG}/editMessageText", json=payload, timeout=2)
         if r.status_code == 200:
             return True
         return send_message(chat_id, text, kb)
@@ -407,7 +404,7 @@ def edit_message_fast(chat_id, msg_id, text, kb=None):
 def send_qris(chat_id):
     if QRIS_IMAGE_URL:
         try:
-            TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": chat_id, "photo": QRIS_IMAGE_URL, "caption": f"Please scan this QRIS to pay for X Premium\nPrice: {X_PRICE}"}, timeout=5)
+            TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": chat_id, "photo": QRIS_IMAGE_URL, "caption": f"Please scan this QRIS to pay for X Premium\nPrice: {X_PRICE}"}, timeout=3)
             return True
         except: pass
     return False
@@ -454,42 +451,32 @@ def get_channel_target_keyboard(user):
     target = user.get("admin_target", "both")
     return {"inline_keyboard": [[{"text": f"📍 Target: {target.upper()}", "callback_data": "admin_noop"}], [{"text": f"{'✅ ' if target=='channel' else ''}📢 Channel Only", "callback_data": "admin_set_channel"}, {"text": f"{'✅ ' if target=='threads' else ''}🧵 Threads Only", "callback_data": "admin_set_threads"}], [{"text": f"{'✅ ' if target=='both' else ''}🚀 Both (Channel+Threads)", "callback_data": "admin_set_both"}], [{"text": "⬅️ Back", "callback_data": "admin_panel"}]]}
 
+# === LOGO UTUH - JANGAN DIPERKECIL ===
 _LOGO_CACHED = None
 def get_logo_cached():
     global _LOGO_CACHED
     if _LOGO_CACHED is not None: return _LOGO_CACHED
     base_dir = os.path.dirname(__file__)
     root_dir = os.path.dirname(base_dir)
-    candidates = [
-        os.path.join(base_dir, "logo.png"),
-        os.path.join(root_dir, "logo.png"),
-        os.path.join(os.getcwd(), "logo.png"),
-        os.path.join(os.getcwd(), "api/logo.png"),
-        "logo.png",
-        "api/logo.png",
-    ]
+    candidates = [os.path.join(base_dir, "logo.png"), os.path.join(root_dir, "logo.png"), os.path.join(os.getcwd(), "logo.png"), os.path.join(os.getcwd(), "api/logo.png"), "logo.png", "api/logo.png"]
     for p in candidates:
         if os.path.exists(p):
             try:
                 logo = Image.open(p).convert("RGBA")
                 bbox = logo.getbbox()
                 if bbox: logo = logo.crop(bbox)
-                if logo.width > 300:
-                    logo = logo.resize((300, int(300 * logo.height / logo.width)), Image.LANCZOS)
+                # JANGAN DI-RESIZE - pakai ukuran asli logo.png
                 _LOGO_CACHED = logo
-                print(f"Logo found at: {p}")
+                print(f"Logo found at: {p} size: {logo.size}")
                 return logo
-            except Exception as e:
-                print(f"logo load error {p}: {e}")
-                return None
-    print("logo.png NOT FOUND di api/ maupun di root")
+            except: return None
     return None
 
 def download_file(file_id):
     try:
-        info = TG.get(f"{BASE_TG}/getFile", params={"file_id": file_id}, timeout=3).json()
+        info = TG.get(f"{BASE_TG}/getFile", params={"file_id": file_id}, timeout=2).json()
         fp = info["result"]["file_path"]
-        return TG.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}", timeout=5).content
+        return TG.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}", timeout=4).content
     except: return None
 
 def add_watermark(photo_bytes):
@@ -498,15 +485,22 @@ def add_watermark(photo_bytes):
         logo_orig = get_logo_cached()
         if not logo_orig: return None
         base = Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
+        # JANGAN RESIZE FOTO - biar logo tidak ikut mengecil
         w, h = base.size
-        target_w = max(60, min(int(w * 0.18), 300))
+        # Logo 25% dari lebar foto, jangan perbesar melebihi ukuran asli biar tidak pecah
+        target_w = int(w * 0.25)
+        if target_w > logo_orig.width:
+            target_w = logo_orig.width
+        if target_w < 180:
+            target_w = min(180, logo_orig.width)
         logo = logo_orig.resize((target_w, int(target_w * logo_orig.height / logo_orig.width)), Image.LANCZOS)
-        margin = max(10, int(w * 0.015))
+        margin = max(15, int(w * 0.02))
         overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
         overlay.paste(logo, (margin, margin), logo)
         combined = Image.alpha_composite(base, overlay).convert("RGB")
         bio = io.BytesIO()
-        combined.save(bio, "JPEG", quality=80, optimize=True)
+        # Quality 92 biar logo tajam, tidak buram
+        combined.save(bio, "JPEG", quality=92, optimize=True)
         bio.seek(0)
         return bio
     except Exception as e:
@@ -524,35 +518,35 @@ def get_font(size, bold=False):
 def make_today_chart(user):
     try:
         if not Image: return None
-        W, H = 720, 400; img = Image.new('RGB', (W, H), '#0D0D0F'); draw = ImageDraw.Draw(img)
-        f_title = get_font(22, True); f_small = get_font(14)
-        draw.rectangle([0, 0, W, 60], fill='#161618')
-        draw.text((20, 12), f"TODAY 1D - {user['name'][:16]}", fill='white', font=f_title)
+        W, H = 480, 260; img = Image.new('RGB', (W, H), '#0D0D0F'); draw = ImageDraw.Draw(img)
+        f_title = get_font(16, True); f_small = get_font(11)
+        draw.rectangle([0, 0, W, 40], fill='#161618')
+        draw.text((15, 8), f"TODAY - {user['name'][:14]}", fill='white', font=f_title)
         total = user['today_text'] + user['today_media']
-        hours = ["TOTAL", "TEXT", "MEDIA", "LIMIT"]
         vals = [total, user['today_text'], user['today_media'], 5]
+        hours = ["TOTAL", "TEXT", "MEDIA", "LIMIT"]
         max_val = max(vals) if max(vals) > 0 else 3
-        slot_w = (700-50)//len(hours)
-        for idx in range(len(hours)):
-            xc = 50+idx*slot_w+slot_w//2; v = vals[idx]
-            yh = 370-int(v/max_val*250) if max_val > 0 else 370
-            draw.rectangle([xc-15, yh, xc+15, 370], fill='#10B981')
-            draw.text((xc-15, 378), hours[idx], fill='#A1A1AA', font=f_small)
-            draw.text((xc-10, yh-20), str(v), fill='white', font=f_small)
-        bio = io.BytesIO(); img.save(bio, format='JPEG', quality=70); bio.seek(0); return bio
+        slot_w = (460-30)//4
+        for idx in range(4):
+            xc = 30+idx*slot_w+slot_w//2; v = vals[idx]
+            yh = 230-int(v/max_val*150) if max_val > 0 else 230
+            draw.rectangle([xc-12, yh, xc+12, 230], fill='#10B981')
+            draw.text((xc-12, 235), hours[idx], fill='#A1A1AA', font=f_small)
+            draw.text((xc-8, yh-15), str(v), fill='white', font=f_small)
+        bio = io.BytesIO(); img.save(bio, format='JPEG', quality=60); bio.seek(0); return bio
     except: return None
 
 def make_weekly_chart(user):
     try:
         if not Image: return None
-        W, H = 720, 400; img = Image.new('RGB', (W, H), '#0D0D0F'); draw = ImageDraw.Draw(img)
-        f_title = get_font(22, True); f_small = get_font(14)
-        draw.rectangle([0, 0, W, 60], fill='#161618')
-        draw.text((20, 12), f"WEEKLY TOTAL - {user['name'][:16]}", fill='white', font=f_title)
+        W, H = 480, 260; img = Image.new('RGB', (W, H), '#0D0D0F'); draw = ImageDraw.Draw(img)
+        f_title = get_font(16, True); f_small = get_font(11)
+        draw.rectangle([0, 0, W, 40], fill='#161618')
+        draw.text((15, 8), f"WEEKLY - {user['name'][:14]}", fill='white', font=f_title)
         total = user['total_text'] + user['total_media']
-        draw.text((20, 150), f"Total All Time: {total} posts", fill='white', font=f_title)
-        draw.text((20, 200), f"Text: {user['total_text']} | Media: {user['total_media']}", fill='#A1A1AA', font=f_small)
-        bio = io.BytesIO(); img.save(bio, format='JPEG', quality=70); bio.seek(0); return bio
+        draw.text((15, 100), f"Total: {total} posts", fill='white', font=f_title)
+        draw.text((15, 140), f"Text: {user['total_text']} | Media: {user['total_media']}", fill='#A1A1AA', font=f_small)
+        bio = io.BytesIO(); img.save(bio, format='JPEG', quality=60); bio.seek(0); return bio
     except: return None
 
 def send_stats(chat_id, user, mode="today"):
@@ -563,7 +557,7 @@ def send_stats(chat_id, user, mode="today"):
         if chart:
             chart.seek(0)
             try:
-                r = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": chat_id, "caption": cap}, files={"photo": ("s.jpg", chart, "image/jpeg")}, timeout=5).json()
+                r = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": chat_id, "caption": cap}, files={"photo": ("s.jpg", chart, "image/jpeg")}, timeout=3).json()
                 if r.get("ok"):
                     send_message(chat_id, "Please select a mode:", kb); return
             except: pass
@@ -575,29 +569,27 @@ def post_to_threads(text_content):
         if not THREADS_USER_ID or not THREADS_TOKEN: return False
         data = {"media_type": "TEXT", "text": text_content[:450], "access_token": THREADS_TOKEN}
         if MAIN_THREAD_ID: data["reply_to_id"] = MAIN_THREAD_ID
-        r = TG.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads", data=data, timeout=3).json()
+        r = TG.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads", data=data, timeout=2).json()
         cid = r.get("id")
         if not cid: return False
-        r2 = TG.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish", data={"creation_id": cid, "access_token": THREADS_TOKEN}, timeout=3).json()
+        r2 = TG.post(f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads_publish", data={"creation_id": cid, "access_token": THREADS_TOKEN}, timeout=2).json()
         return "id" in r2
     except: return False
 
 def send_success(chat_id, user, ch_msg_id, target="both", x_url=None):
     try:
         url = f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_msg_id}" if ch_msg_id else f"https://t.me/{CHANNEL_ID.replace('@','')}"
-        # SEJAJAR 2x2 - V117.4
-        row1 = []
-        if target in ["channel", "both"] and ch_msg_id:
-            row1.append({"text": "View on Channel", "url": url})
-        if x_url:
-            row1.append({"text": "View on X", "url": x_url})
-        row2 = []
-        if ch_msg_id:
-            row2.append({"text": "Delete", "callback_data": f"del_{ch_msg_id}"})
-        row2.append({"text": "Back", "callback_data": "back_home"})
         buttons = []
-        if row1: buttons.append(row1)
-        if row2: buttons.append(row2)
+        if ch_msg_id:
+            buttons.append([{"text": "Delete", "callback_data": f"del_{ch_msg_id}"}])
+        row_view = []
+        if target in ["channel", "both"] and ch_msg_id:
+            row_view.append({"text": "View on Channel", "url": url})
+        if x_url:
+            row_view.append({"text": "View on X", "url": x_url})
+        if row_view:
+            buttons.append(row_view)
+        buttons.append([{"text": "Back", "callback_data": "back_home"}])
         note = f" -> {target.upper()}" if is_admin(chat_id) else ""
         if is_premium_active(user) and user.get("x_auto", True) and get_setting('x_auto_share', 'off') == 'on':
             note += " + X"
@@ -612,7 +604,7 @@ def send_user_list(chat_id):
         send_message(chat_id, "Database is not connected."); return
     try:
         cur = db.cursor()
-        cur.execute("SELECT user_id, name, username, total_text+total_media as total, banned, x_premium_until FROM menfess_users ORDER BY total DESC")
+        cur.execute("SELECT user_id, name, username, total_text+total_media as total, banned, x_premium_until FROM menfess_users ORDER BY total DESC LIMIT 50")
         rows = cur.fetchall(); cur.close()
         back_kb = {"inline_keyboard": [[{"text": "Back", "callback_data": "admin_panel"}]]}
         if not rows:
@@ -635,8 +627,8 @@ def send_user_list(chat_id):
 
 def handle_admin_command(chat_id, text):
     if text.startswith("/clearmenu"):
-        TG.post(f"{BASE_TG}/setChatMenuButton", json={"menu_button": {"type": "default"}}, timeout=3)
-        TG.post(f"{BASE_TG}/deleteMyCommands", json={}, timeout=3)
+        TG.post(f"{BASE_TG}/setChatMenuButton", json={"menu_button": {"type": "default"}}, timeout=2)
+        TG.post(f"{BASE_TG}/deleteMyCommands", json={}, timeout=2)
         send_message(chat_id, "Menu button and commands have been cleared."); return True
     if text.startswith("/ban"):
         parts = text.split()
@@ -685,41 +677,27 @@ def handle_admin_command(chat_id, text):
         if not btext:
             send_message(chat_id, "Please type: /broadcast [your message]", get_back_keyboard())
             return True
-        dedup_key = f"bc_{hashlib.md5(btext.encode()).hexdigest()[:12]}"
-        old = get_setting(dedup_key, "")
-        if old:
-            try:
-                old_ts = float(old)
-                if time.time() - old_ts < 300:
-                    send_message(chat_id, "This broadcast has already been sent within the last 5 minutes. Please wait 5 minutes to prevent duplication.", get_admin_panel())
-                    return True
-            except: pass
         db = get_db()
         if not db:
             send_message(chat_id, "Database is not connected. Broadcast failed.", get_back_keyboard())
             return True
         try:
-            cur = db.cursor(); cur.execute("SELECT user_id FROM menfess_users WHERE banned=FALSE"); rows = cur.fetchall(); cur.close()
+            cur = db.cursor(); cur.execute("SELECT user_id FROM menfess_users WHERE banned=FALSE LIMIT 50"); rows = cur.fetchall(); cur.close()
         except Exception as e:
             send_message(chat_id, f"Failed to get user list: {e}", get_back_keyboard())
             return True
         finally: release_db(db)
-        if len(rows) > 80:
-            send_message(chat_id, f"Too many users ({len(rows)}). Maximum is 80 per broadcast to prevent Vercel timeout. Please split the broadcast.", get_admin_panel())
-            return True
-        set_setting(dedup_key, str(time.time()))
         sukses = 0; gagal = 0
         for r in rows:
             if send_message(r[0], f"📢 BROADCAST\n{SEP}\n{btext}"): sukses += 1
             else: gagal += 1
-            time.sleep(0.05)
-        send_message(chat_id, f"✅ Broadcast Sent!\n{SEP}\nMessage: {btext[:100]}\n\nSuccessfully sent to: {sukses} members\nFailed: {gagal} members (blocked bot / deleted account)\nTotal: {len(rows)} members", get_admin_panel())
+        send_message(chat_id, f"✅ Broadcast Sent!\n{SEP}\nMessage: {btext[:100]}\n\nSuccessfully sent to: {sukses} members\nFailed: {gagal} members\nTotal: {len(rows)} members", get_admin_panel())
         return True
     if text.startswith("/users"):
         send_user_list(chat_id); return True
     if text.startswith("/setwebhook"):
         host = request.host_url.rstrip('/'); wh = f"{host}/api/index"
-        r = TG.get(f"{BASE_TG}/setWebhook", params={"url": wh}, timeout=3).json()
+        r = TG.get(f"{BASE_TG}/setWebhook", params={"url": wh}, timeout=2).json()
         send_message(chat_id, M(f"Webhook: {wh}\nResult: {r}")); return True
     return False
 
@@ -730,7 +708,7 @@ def set_webhook():
         webhook_url = f"{host}/api/index"
         custom = os.getenv("WEBHOOK_URL")
         if custom: webhook_url = custom
-        r = TG.get(f"{BASE_TG}/setWebhook", params={"url": webhook_url}, timeout=3).json()
+        r = TG.get(f"{BASE_TG}/setWebhook", params={"url": webhook_url}, timeout=2).json()
         return f"Webhook set to {webhook_url}<br>{r}", 200
     except Exception as e:
         return f"Error setting webhook: {e}", 500
@@ -738,7 +716,7 @@ def set_webhook():
 @app.route("/webhookinfo", methods=["GET"])
 def webhook_info():
     try:
-        r = TG.get(f"{BASE_TG}/getWebhookInfo", timeout=3).json()
+        r = TG.get(f"{BASE_TG}/getWebhookInfo", timeout=2).json()
         return jsonify(r), 200
     except Exception as e:
         return str(e), 500
@@ -750,22 +728,10 @@ def cron_retweet():
     res = auto_retweet_hashtag()
     return res, 200
 
-@app.route("/", methods=["GET", "POST"])
-@app.route("/api/index", methods=["GET", "POST"])
-@app.route("/api/index.py", methods=["GET", "POST"])
-@app.route("/api/webhook", methods=["GET", "POST"])
-@app.route("/webhook", methods=["GET", "POST"])
-def main_handler():
-    data = {}; where = "init"
+def process_update(data):
+    where = "init"
     try:
-        if request.method == "GET": return "JogjaLend Bot V117.4 OK", 200
-        where = "parse_json"; data = request.get_json(force=True, silent=True) or {}
-        upd_id = data.get("update_id")
-        if upd_id is not None:
-            upd_key = f"upd_{upd_id}"
-            if get_setting(upd_key, "") == "done":
-                return "ok", 200
-            set_setting(upd_key, "done")
+        init_db()
         if "message" in data:
             msg = data["message"]; chat_id = msg["chat"]["id"]; uid = str(chat_id)
             where = f"get_user {uid}"; user = get_user(uid); text = msg.get("text", ""); caption = msg.get("caption", "")
@@ -776,10 +742,10 @@ def main_handler():
                 user["username"] = msg["from"].get("username", "")
             if is_admin(chat_id) and text.startswith("/"):
                 if handle_admin_command(chat_id, text):
-                    return "ok", 200
+                    return
             if user.get("banned") and not is_admin(chat_id):
                 send_message(chat_id, f"You are BANNED.\n{SEP}\nWarnings: {user.get('warn',0)}/3\nPlease contact the administrator.", get_back_keyboard())
-                return "ok", 200
+                return
             if text.startswith("/start"):
                 save_user_to_db(uid, user)
                 send_message(chat_id, get_welcome_text(user), get_main_keyboard(is_admin(chat_id)))
@@ -798,10 +764,10 @@ def main_handler():
                         adm = adm.strip()
                         if not adm: continue
                         try:
-                            TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": adm, "photo": fid, "caption": f"💰 X PREMIUM PAYMENT\nUser: {user['name']} (@{user['username']})\nID: {uid}\nPrice: {X_PRICE}"}, timeout=5)
+                            TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": adm, "photo": fid, "caption": f"💰 X PREMIUM PAYMENT\nUser: {user['name']} (@{user['username']})\nID: {uid}\nPrice: {X_PRICE}"}, timeout=3)
                             send_message(adm, "Would you like to approve this user?", {"inline_keyboard": [[{"text": "✅ Approve for 30 Days", "callback_data": f"x_approve_{uid}"}, {"text": "❌ Reject", "callback_data": f"x_reject_{uid}"}]]})
                         except: pass
-                    return "ok", 200
+                    return
                 if text and not text.startswith("/") and len(text) >= 3:
                     if user["today_text"] >= 5: send_message(chat_id, f"Limit Reached 5/5\n{SEP}\nQuota will reset at 00:00 WIB", get_back_keyboard())
                     else:
@@ -814,23 +780,31 @@ def main_handler():
                             kb_appr = {"inline_keyboard": [[{"text": "✅ Approve", "callback_data": f"appr_{pid}"}, {"text": "❌ Reject", "callback_data": f"rej_{pid}"}]]}
                             send_message(LOG_CHANNEL, f"📥 PENDING MENFESS\nFrom: {user['name']} (@{user['username']})\nKey: {pid}\n{SEP}\n{clean}", kb_appr)
                             send_message(chat_id, f"Your menfess has been submitted for administrator approval.\n{SEP}\nPlease wait for confirmation.", get_back_keyboard())
-                            return "ok", 200
+                            return
                         target = user.get("admin_target", "both") if is_admin(chat_id) else ("both" if user.get("threads_on") else "channel")
                         ch_id = None
                         x_url = None
-                        if target in ["channel", "both"]:
-                            r = TG.post(f"{BASE_TG}/sendMessage", json={"chat_id": CHANNEL_ID, "text": clean, "parse_mode": "HTML"}, timeout=3).json()
-                            ch_id = r.get("result", {}).get("message_id")
-                            save_post_owner(ch_id, uid)
+                        def _to_channel():
+                            nonlocal ch_id
+                            if target in ["channel", "both"]:
+                                r = TG.post(f"{BASE_TG}/sendMessage", json={"chat_id": CHANNEL_ID, "text": clean, "parse_mode": "HTML"}, timeout=3).json()
+                                ch_id = r.get("result", {}).get("message_id")
+                                save_post_owner(ch_id, uid)
+                        def _to_x():
+                            nonlocal x_url
+                            if (is_admin(chat_id) or (is_premium_active(user) and user.get("x_auto", True))) and get_setting('x_auto_share', 'off') == 'on':
+                                _ok_x, x_url = post_to_x(clean)
+                        t1 = threading.Thread(target=_to_channel, daemon=True)
+                        t2 = threading.Thread(target=_to_x, daemon=True)
+                        t1.start(); t2.start()
                         if target in ["threads", "both"]: post_to_threads(clean)
-                        if (is_admin(chat_id) or (is_premium_active(user) and user.get("x_auto", True))) and get_setting('x_auto_share', 'off') == 'on':
-                            _ok_x, x_url = post_to_x(clean)
+                        t1.join(timeout=4); t2.join(timeout=8)
                         user["today_text"] += 1; user["total_text"] += 1; user["total_chars"] = user.get("total_chars", 0)+len(text)
                         save_user_to_db(uid, user); send_success(chat_id, user, ch_id, target, x_url)
                 if "photo" in msg or "video" in msg:
                     if caption and any(w in caption.lower() for w in ["bukti", "transfer", "tf ", "qris", "struk", "receipt"]):
                         send_message(chat_id, "This appears to be a payment receipt, not a menfess. Payment receipts will not be published to the channel. Please submit your receipt through the X Premium menu.", get_back_keyboard())
-                        return "ok", 200
+                        return
                     if user["today_media"] >= 5: send_message(chat_id, "Limit Reached 5/5", get_back_keyboard())
                     else:
                         fid = msg["photo"][-1]["file_id"] if "photo" in msg else msg.get("video", {}).get("file_id")
@@ -843,12 +817,12 @@ def main_handler():
                             set_setting(pkey, json.dumps({"type": "video" if not is_photo else "photo", "owner": uid, "file_id": fid, "caption": base_cap, "name": user['name'], "username": user['username']}, ensure_ascii=False))
                             kb_appr = {"inline_keyboard": [[{"text": "✅ Approve", "callback_data": f"appr_{pid}"}, {"text": "❌ Reject", "callback_data": f"rej_{pid}"}]]}
                             try:
-                                if is_photo: TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": LOG_CHANNEL, "photo": fid, "caption": f"📥 PENDING MENFESS\nFrom: {user['name']} (@{user['username']})\nKey: {pid}\n{SEP}\n{base_cap}"}, timeout=5)
-                                else: TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": LOG_CHANNEL, "video": fid, "caption": f"📥 PENDING MENFESS\nFrom: {user['name']} (@{user['username']})\nKey: {pid}\n{SEP}\n{base_cap}"}, timeout=5)
+                                if is_photo: TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": LOG_CHANNEL, "photo": fid, "caption": f"📥 PENDING MENFESS\nFrom: {user['name']} (@{user['username']})\nKey: {pid}\n{SEP}\n{base_cap}"}, timeout=3)
+                                else: TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": LOG_CHANNEL, "video": fid, "caption": f"📥 PENDING MENFESS\nFrom: {user['name']} (@{user['username']})\nKey: {pid}\n{SEP}\n{base_cap}"}, timeout=3)
                             except: pass
                             send_message(LOG_CHANNEL, f"📥 PENDING MENFESS - Key: {pid}\nFrom: {user['name']} (@{user['username']})", kb_appr)
                             send_message(chat_id, "Your media has been submitted for administrator approval.\nPlease wait for confirmation.", get_back_keyboard())
-                            return "ok", 200
+                            return
                         target = user.get("admin_target", "both") if is_admin(chat_id) else ("both" if user.get("threads_on") else "channel")
                         ch_id = None
                         wm_bytes = None
@@ -859,49 +833,55 @@ def main_handler():
                             wm = add_watermark(raw) if raw else None
                             if wm:
                                 wm.seek(0); wm_bytes = wm.read(); wm.seek(0)
-                                print("Logo berhasil nempel")
                             else:
-                                print("Logo gagal nempel, pakai foto asli, tetap share ke X")
                                 wm_bytes = raw
-                        if target in ["channel", "both"]:
-                            if is_photo:
-                                if wm_bytes:
-                                    r = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": base_cap, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", io.BytesIO(wm_bytes), "image/jpeg")}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
+                        def _ch_media():
+                            nonlocal ch_id
+                            if target in ["channel", "both"]:
+                                if is_photo:
+                                    if wm_bytes:
+                                        r = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": base_cap, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", io.BytesIO(wm_bytes), "image/jpeg")}, timeout=4).json(); ch_id = r.get("result", {}).get("message_id")
+                                    else:
+                                        r = TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=3).json(); ch_id = r.get("result", {}).get("message_id")
                                 else:
-                                    r = TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=3).json(); ch_id = r.get("result", {}).get("message_id")
-                            else:
-                                r = TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=5).json(); ch_id = r.get("result", {}).get("message_id")
-                            save_post_owner(ch_id, uid)
+                                    r = TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=4).json(); ch_id = r.get("result", {}).get("message_id")
+                                save_post_owner(ch_id, uid)
+                        def _x_media():
+                            nonlocal x_url
+                            if (is_admin(chat_id) or (is_premium_active(user) and user.get("x_auto", True))) and get_setting('x_auto_share', 'off') == 'on':
+                                if is_photo:
+                                    _ok_x, x_url = post_to_x(base_cap, wm_bytes, is_video=False)
+                                else:
+                                    video_bytes = download_file(fid)
+                                    if video_bytes:
+                                        _ok_x, x_url = post_to_x(base_cap, video_bytes, is_video=True)
+                                    else:
+                                        _ok_x, x_url = post_to_x(base_cap)
+                        t1 = threading.Thread(target=_ch_media, daemon=True)
+                        t2 = threading.Thread(target=_x_media, daemon=True)
+                        t1.start(); t2.start()
                         if target in ["threads", "both"]: post_to_threads(base_cap)
-                        if (is_admin(chat_id) or (is_premium_active(user) and user.get("x_auto", True))) and get_setting('x_auto_share', 'off') == 'on':
-                            if is_photo:
-                                _ok_x, x_url = post_to_x(base_cap, wm_bytes, is_video=False)
-                            else:
-                                video_bytes = download_file(fid)
-                                if video_bytes:
-                                    _ok_x, x_url = post_to_x(base_cap, video_bytes, is_video=True)
-                                else:
-                                    _ok_x, x_url = post_to_x(base_cap)
+                        t1.join(timeout=5); t2.join(timeout=9)
                         user["today_media"] += 1; user["total_media"] += 1
                         save_user_to_db(uid, user); send_success(chat_id, user, ch_id, target, x_url)
         if "callback_query" in data:
             cq = data["callback_query"]; chat_id = cq["message"]["chat"]["id"]; uid = str(chat_id); cdata = cq["data"]; msg_id = cq["message"]["message_id"]
             where = f"callback {cdata}"
-            try: TG.post(f"{BASE_TG}/answerCallbackQuery", json={"callback_query_id": cq["id"]}, timeout=2)
+            try: TG.post(f"{BASE_TG}/answerCallbackQuery", json={"callback_query_id": cq["id"]}, timeout=1)
             except: pass
             user = get_user(uid)
             HASHTAG = get_setting('hashtag', '#jogjalend')
             if user.get("banned") and not is_admin(chat_id):
                 edit_message_fast(chat_id, msg_id, "You are BANNED.", get_back_keyboard())
-                return "ok", 200
+                return
             if cdata in ["stats", "stats_today", "stats_weekly"]:
-                try: TG.post(f"{BASE_TG}/deleteMessage", json={"chat_id": chat_id, "message_id": msg_id}, timeout=2)
+                try: TG.post(f"{BASE_TG}/deleteMessage", json={"chat_id": chat_id, "message_id": msg_id}, timeout=1)
                 except: pass
                 mode = "weekly" if cdata == "stats_weekly" else "today"
                 send_stats(chat_id, user, mode)
             elif cdata == "back_home": edit_message_fast(chat_id, msg_id, get_welcome_text(user), get_main_keyboard(is_admin(chat_id)))
             elif cdata == "close":
-                try: TG.post(f"{BASE_TG}/deleteMessage", json={"chat_id": chat_id, "message_id": msg_id}, timeout=2)
+                try: TG.post(f"{BASE_TG}/deleteMessage", json={"chat_id": chat_id, "message_id": msg_id}, timeout=1)
                 except: pass
             elif cdata == "admin_noop": pass
             elif cdata == "lend_page1": edit_message_fast(chat_id, msg_id, M("Please select one of the settings you would like to change."), get_menu_1())
@@ -916,7 +896,7 @@ def main_handler():
                 kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message_fast(chat_id, msg_id, f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend", kb)
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V117.4\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V117.7 SPEED + Logo Utuh\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
             elif cdata == "x_premium":
                 if is_premium_active(user):
                     auto = "ON" if user.get("x_auto", True) else "OFF"
@@ -991,12 +971,12 @@ def main_handler():
                                     wm2 = add_watermark(raw2) if raw2 else None
                                     if wm2:
                                         wm2.seek(0); media_for_x = wm2.read()
-                                        rr = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": cap2, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", io.BytesIO(media_for_x), "image/jpeg")}, timeout=5).json()
+                                        rr = TG.post(f"{BASE_TG}/sendPhoto", data={"chat_id": CHANNEL_ID, "caption": cap2, "parse_mode": "HTML"}, files={"photo": ("wm.jpg", io.BytesIO(media_for_x), "image/jpeg")}, timeout=4).json()
                                     else:
                                         media_for_x = raw2
-                                        rr = TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid2, "caption": cap2, "parse_mode": "HTML"}, timeout=5).json()
+                                        rr = TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid2, "caption": cap2, "parse_mode": "HTML"}, timeout=3).json()
                                 else:
-                                    rr = TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid2, "caption": cap2, "parse_mode": "HTML"}, timeout=5).json()
+                                    rr = TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid2, "caption": cap2, "parse_mode": "HTML"}, timeout=4).json()
                                 ch_mid = rr.get("result", {}).get("message_id")
                                 save_post_owner(ch_mid, owner_id)
                                 if get_setting('x_auto_share', 'off') == 'on':
@@ -1024,7 +1004,7 @@ def main_handler():
                             edit_message_fast(chat_id, msg_id, "Rejected.", get_admin_panel())
                             if owner_id: send_message(owner_id, "Your menfess was rejected by the administrator.", get_back_keyboard())
             elif cdata == "admin_panel":
-                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V117.4\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
+                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V117.7\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
             elif cdata == "admin_users":
                 send_user_list(chat_id)
@@ -1041,7 +1021,7 @@ def main_handler():
                 edit_message_fast(chat_id, msg_id, "Broadcast\n------------------------------\nType: /broadcast [your message]", get_admin_panel())
             elif cdata == "admin_webhook":
                 host = request.host_url.rstrip('/'); wh = f"{host}/api/index"
-                r = TG.get(f"{BASE_TG}/setWebhook", params={"url": wh}, timeout=3).json()
+                r = TG.get(f"{BASE_TG}/setWebhook", params={"url": wh}, timeout=2).json()
                 edit_message_fast(chat_id, msg_id, f"Webhook: {wh}\nResult: {r}", get_admin_panel())
             elif cdata == "admin_logs":
                 edit_message_fast(chat_id, msg_id, f"Check Logs\n------------------------------\nLog Channel: {LOG_CHANNEL}\nPlease check Vercel Logs for errors.", get_admin_panel())
@@ -1122,17 +1102,38 @@ def main_handler():
                     if owner and str(owner) != uid and not is_admin(chat_id):
                         edit_message_fast(chat_id, msg_id, "You can only delete your own post.", get_back_keyboard())
                     else:
-                        TG.post(f"{BASE_TG}/deleteMessage", json={"chat_id": CHANNEL_ID, "message_id": mid}, timeout=3)
+                        TG.post(f"{BASE_TG}/deleteMessage", json={"chat_id": CHANNEL_ID, "message_id": mid}, timeout=2)
                         edit_message_fast(chat_id, msg_id, "Post deleted.", get_back_keyboard())
                 except Exception as e:
                     edit_message_fast(chat_id, msg_id, f"Failed to delete: {e}", get_back_keyboard())
-        return "ok", 200
     except Exception as e:
         print(f"ERROR {where}: {e}\n{traceback.format_exc()}")
         try:
             if "message" in data:
                 send_message(data["message"]["chat"]["id"], "An error occurred. Please try again.", get_back_keyboard())
         except: pass
+
+@app.route("/", methods=["GET", "POST"])
+@app.route("/api/index", methods=["GET", "POST"])
+@app.route("/api/index.py", methods=["GET", "POST"])
+@app.route("/api/webhook", methods=["GET", "POST"])
+@app.route("/webhook", methods=["GET", "POST"])
+def main_handler():
+    try:
+        if request.method == "GET": return "JogjaLend Bot V117.7 OK", 200
+        data = request.get_json(force=True, silent=True) or {}
+        upd_id = data.get("update_id")
+        if upd_id is not None:
+            with SEEN_LOCK:
+                if upd_id in SEEN_UPDATES:
+                    return "ok", 200
+                SEEN_UPDATES.add(upd_id)
+                if len(SEEN_UPDATES) > 500:
+                    SEEN_UPDATES.clear()
+        threading.Thread(target=process_update, args=(data,), daemon=True).start()
+        return "ok", 200
+    except Exception as e:
+        print(f"main_handler error: {e}")
         return "ok", 200
 
 @app.route("/<path:path>", methods=["GET", "POST"])
@@ -1145,7 +1146,7 @@ def catch_all(path):
         except:
             pass
         return main_handler()
-    return "JogjaLend Bot V117.4 OK", 200
+    return "JogjaLend Bot V117.7 OK", 200
 
 if __name__ == "__main__":
     app.run()
