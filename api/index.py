@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot V117.6 - NO THREADS - Channel + X Fail-Safe (X Banned Tetap Share ke Channel) + Button 2x2 + X @jogcorp
+# api/index.py - JogjaLend Bot V117.7 - NO THREADS - Channel + X Fail-Safe + QRIS 1 Pesan + Hapus QR Setelah Bukti + Button 2x2 + X @jogcorp
 from flask import Flask, request, jsonify
 import os, requests, io, re, traceback, copy, time, hmac, hashlib, base64, urllib.parse, secrets, json
 from datetime import datetime, timezone, timedelta
@@ -231,14 +231,12 @@ def post_to_x(text_content, photo_bytes=None, is_video=False):
             except:
                 pass
             return True, None
-        # 401 / 403 = token invalid / akun ke-banned / suspended - jangan lempar error
         print(f"X post failed {r.status_code}: {r.text[:300]}")
         return False, None
     except Exception as e:
         print(f"X post error (ditahan, channel tetap jalan): {e}")
         return False, None
 
-# V117.6 - FAIL-SAFE WRAPPER: X gagal apapun alasannya, JANGAN PERNAH gagalkan Channel
 def safe_post_to_x(text_content, photo_bytes=None, is_video=False):
     try:
         if get_setting('x_auto_share', 'off') != 'on':
@@ -415,12 +413,36 @@ def edit_message_fast(chat_id, msg_id, text, kb=None):
         try: return send_message(chat_id, text, kb)
         except: return False
 
-def send_qris(chat_id):
+# V117.7 - QRIS + TOMBOL DALAM 1 PESAN + HAPUS QR SETELAH BUKTI
+def delete_qris_message(chat_id):
+    try:
+        qid = get_setting(f"qris_msg_{chat_id}", "")
+        if qid and str(qid).isdigit():
+            TG.post(f"{BASE_TG}/deleteMessage", json={"chat_id": chat_id, "message_id": int(qid)}, timeout=3)
+        delete_setting(f"qris_msg_{chat_id}")
+    except: pass
+
+def send_x_premium_qris(chat_id, user=None):
+    # Hapus QRIS lama dulu biar gak numpuk kalau user klik berkali-kali
+    delete_qris_message(chat_id)
+    kb = get_x_premium_keyboard(user)
+    # Fancy-in tombol manual karena ini sendPhoto, bukan sendMessage
+    kb_fancy = copy.deepcopy(kb)
+    for row in kb_fancy["inline_keyboard"]:
+        for btn in row:
+            if "text" in btn and "url" not in btn: btn["text"] = F(btn["text"])
+    caption = F(f"𝕏 X Premium 🔒\n{SEP}\nEnable automatic posting of your menfess to X.\n\nPrice: {X_PRICE}\n{QRIS_TEXT}\n\nInstructions:\n1. Please scan QRIS above & transfer exact amount.\n2. Tap 'I Have Transferred' below.\n3. Send photo of transfer receipt here.\n4. Please wait for admin approval.")
     if QRIS_IMAGE_URL:
         try:
-            TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": chat_id, "photo": QRIS_IMAGE_URL, "caption": f"Please scan this QRIS to pay for X Premium\nPrice: {X_PRICE}"}, timeout=5)
+            r = TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": chat_id, "photo": QRIS_IMAGE_URL, "caption": caption, "parse_mode": "HTML", "reply_markup": kb_fancy}, timeout=5).json()
+            mid = r.get("result", {}).get("message_id")
+            if mid:
+                set_setting(f"qris_msg_{chat_id}", str(mid))
             return True
-        except: pass
+        except Exception as e:
+            print(f"send QRIS photo failed: {e}")
+    # Fallback kalau QRIS_IMAGE_URL kosong: kirim teks + tombol aja
+    send_message(chat_id, f"𝕏 X Premium 🔒\n{SEP}\nEnable automatic posting of your menfess to X.\n\nPrice: {X_PRICE}\n{QRIS_TEXT}\n\nInstructions:\n1. Please transfer the exact amount.\n2. Tap 'I Have Transferred'.\n3. Send a photo of your transfer receipt here.\n4. Please wait for admin approval.", kb)
     return False
 
 def get_x_premium_keyboard(user=None):
@@ -576,7 +598,6 @@ def send_stats(chat_id, user, mode="today"):
         send_message(chat_id, cap, kb)
     except: pass
 
-# V117.6 - Sukses 2x2, X gagal tetap tampil Channel, ada keterangan X Failed buat admin
 def send_success(chat_id, user, ch_msg_id, target="channel", x_url=None, x_failed=False):
     try:
         url = f"https://t.me/{CHANNEL_ID.replace('@','')}/{ch_msg_id}" if ch_msg_id else f"https://t.me/{CHANNEL_ID.replace('@','')}"
@@ -596,7 +617,6 @@ def send_success(chat_id, user, ch_msg_id, target="channel", x_url=None, x_faile
         if x_url:
             note += " + X"
         elif x_failed:
-            # X gagal / banned, tapi Channel tetap sukses - jangan bikin user panik, cuma info kecil
             note += " (X Failed, Channel OK)"
         send_message(chat_id, f"Menfess successfully sent!{note}\n{SEP}\nMedia : {user['today_media']}/5\nText : {user['today_text']}/5", {"inline_keyboard": buttons})
     except Exception as e: print(f"send_success error: {e}")
@@ -753,7 +773,7 @@ def cron_retweet():
 def main_handler():
     data = {}; where = "init"
     try:
-        if request.method == "GET": return "JogjaLend Bot V117.6 OK", 200
+        if request.method == "GET": return "JogjaLend Bot V117.7 OK", 200
         where = "parse_json"; data = request.get_json(force=True, silent=True) or {}
         upd_id = data.get("update_id")
         if upd_id is not None:
@@ -788,6 +808,8 @@ def main_handler():
                     user["waiting_proof"] = False
                     save_user_to_db(uid, user)
                     fid = msg["photo"][-1]["file_id"] if "photo" in msg else msg.get("video", {}).get("file_id")
+                    # V117.7 - Bukti masuk, QRIS langsung dihapus
+                    delete_qris_message(chat_id)
                     send_message(chat_id, f"Receipt Received! ✅\n{SEP}\nYour payment is currently being verified by the admin. You will receive a notification once it has been approved.", get_back_keyboard())
                     for adm in ADMIN_ID.split(","):
                         adm = adm.strip()
@@ -810,19 +832,16 @@ def main_handler():
                             send_message(LOG_CHANNEL, f"📥 PENDING MENFESS\nFrom: {user['name']} (@{user['username']})\nKey: {pid}\n{SEP}\n{clean}", kb_appr)
                             send_message(chat_id, f"Your menfess has been submitted for administrator approval.\n{SEP}\nPlease wait for confirmation.", get_back_keyboard())
                             return "ok", 200
-                        # V117.6 - URUTAN WAJIB: 1. Channel dulu, 2. X terakhir + fail-safe
                         ch_id = None
                         x_url = None
                         x_failed = False
                         should_post_x = (is_admin(chat_id) or (is_premium_active(user) and user.get("x_auto", True)))
-                        # 1. CHANNEL - TIDAK PERNAH DIBATALKAN OLEH X
                         try:
                             r = TG.post(f"{BASE_TG}/sendMessage", json={"chat_id": CHANNEL_ID, "text": clean, "parse_mode": "HTML"}, timeout=3).json()
                             ch_id = r.get("result", {}).get("message_id")
                             save_post_owner(ch_id, uid)
                         except Exception as e:
                             print(f"Channel text failed: {e}")
-                        # 2. X - KALAU GAGAL / BANNED, CUMA TANDAI, JANGAN GAGALKAN CHANNEL
                         if should_post_x:
                             _ok_x, x_url = safe_post_to_x(clean)
                             if not _ok_x and get_setting('x_auto_share', 'off') == 'on':
@@ -851,7 +870,6 @@ def main_handler():
                             send_message(LOG_CHANNEL, f"📥 PENDING MENFESS - Key: {pid}\nFrom: {user['name']} (@{user['username']})", kb_appr)
                             send_message(chat_id, "Your media has been submitted for administrator approval.\nPlease wait for confirmation.", get_back_keyboard())
                             return "ok", 200
-                        # V117.6 - URUTAN WAJIB MEDIA: 1. Channel dulu, 2. X terakhir + fail-safe
                         ch_id = None
                         wm_bytes = None
                         x_url = None
@@ -867,7 +885,6 @@ def main_handler():
                             else:
                                 print("Logo gagal nempel, pakai foto asli, tetap share ke X")
                                 wm_bytes = raw
-                        # 1. CHANNEL
                         try:
                             if is_photo:
                                 if wm_bytes:
@@ -879,7 +896,6 @@ def main_handler():
                             save_post_owner(ch_id, uid)
                         except Exception as e:
                             print(f"Channel media failed: {e}")
-                        # 2. X - FAIL-SAFE
                         if should_post_x:
                             if is_photo:
                                 _ok_x, x_url = safe_post_to_x(base_cap, wm_bytes, is_video=False)
@@ -912,7 +928,10 @@ def main_handler():
                 except: pass
                 mode = "weekly" if cdata == "stats_weekly" else "today"
                 send_stats(chat_id, user, mode)
-            elif cdata == "back_home": edit_message_fast(chat_id, msg_id, get_welcome_text(user), get_main_keyboard(is_admin(chat_id)))
+            elif cdata == "back_home":
+                # Kalau balik dari QRIS, QRIS lama ikut dihapus biar gak numpuk
+                delete_qris_message(chat_id)
+                edit_message_fast(chat_id, msg_id, get_welcome_text(user), get_main_keyboard(is_admin(chat_id)))
             elif cdata == "close":
                 try: TG.post(f"{BASE_TG}/deleteMessage", json={"chat_id": chat_id, "message_id": msg_id}, timeout=2)
                 except: pass
@@ -922,17 +941,27 @@ def main_handler():
             elif cdata == "my_profile": edit_message_fast(chat_id, msg_id, f"My Profile\n{SEP}\nName: {user['name']}\nUsername: @{user['username']}\nMedia: {user['today_media']}/5 Text: {user['today_text']}/5\nHashtag: {HASHTAG}\nX Premium: {'ACTIVE until '+user.get('x_premium_until','') if is_premium_active(user) else 'Not active'}", get_back_keyboard())
             elif cdata == "post": edit_message_fast(chat_id, msg_id, f"Post Menfess\n{SEP}\nPlease type your text directly, or send media with a caption.\nHashtag will be added automatically: {HASHTAG}", get_back_keyboard())
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V117.6\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V117.7\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
             elif cdata == "x_premium":
                 if is_premium_active(user):
                     auto = "ON" if user.get("x_auto", True) else "OFF"
                     edit_message_fast(chat_id, msg_id, f"🎉 X Premium ACTIVE ✅\n{SEP}\nValid Until: {user.get('x_premium_until','')}\nAutomatic Posting Status: {auto}\nYour menfess will be automatically posted to X when enabled.", get_x_premium_keyboard(user))
                 else:
-                    send_qris(chat_id)
-                    edit_message_fast(chat_id, msg_id, f"𝕏 X Premium 🔒\n{SEP}\nEnable automatic posting of your menfess to X.\n\nPrice: {X_PRICE}\n{QRIS_TEXT}\n\nInstructions:\n1. Please transfer the exact amount.\n2. Tap 'I Have Transferred'.\n3. Send a photo of your transfer receipt here.\n4. Please wait for admin approval.", get_x_premium_keyboard(user))
+                    # V117.7 - Jangan edit pesan lama, kirim QRIS baru 1 pesan utuh
+                    try: TG.post(f"{BASE_TG}/deleteMessage", json={"chat_id": chat_id, "message_id": msg_id}, timeout=2)
+                    except: pass
+                    send_x_premium_qris(chat_id, user)
             elif cdata == "x_pay_proof":
                 user["waiting_proof"] = True; save_user_to_db(uid, user)
-                edit_message_fast(chat_id, msg_id, f"Submit Transfer Receipt\n{SEP}\nPlease send a PHOTO of your QRIS transfer receipt here.\nPlease do not send a menfess yet, send only the receipt photo.", get_back_keyboard())
+                # Edit caption QRIS jadi mode tunggu bukti, tombol tetap nempel di QRIS
+                try:
+                    kb_wait = {"inline_keyboard": [[{"text": "Back", "callback_data": "back_home"}]]}
+                    kb_f = copy.deepcopy(kb_wait)
+                    for row in kb_f["inline_keyboard"]:
+                        for btn in row: btn["text"] = F(btn["text"])
+                    TG.post(f"{BASE_TG}/editMessageCaption", json={"chat_id": chat_id, "message_id": msg_id, "caption": F(f"Submit Transfer Receipt\n{SEP}\nPlease send a PHOTO of your QRIS transfer receipt here.\nPlease do not send a menfess yet, send only the receipt photo.\n\nQRIS akan otomatis terhapus setelah bukti terkirim."), "parse_mode": "HTML", "reply_markup": kb_f}, timeout=3)
+                except:
+                    edit_message_fast(chat_id, msg_id, f"Submit Transfer Receipt\n{SEP}\nPlease send a PHOTO of your QRIS transfer receipt here.\nPlease do not send a menfess yet, send only the receipt photo.", get_back_keyboard())
             elif cdata == "x_toggle_auto":
                 if is_premium_active(user):
                     user["x_auto"] = not user.get("x_auto", True); save_user_to_db(uid, user)
@@ -973,7 +1002,6 @@ def main_handler():
                             x_url_appr = None
                             if pend.get("type") == "text":
                                 txt = pend.get("text", "")
-                                # V117.6 - Approval juga: Channel dulu, X fail-safe
                                 try:
                                     rr = TG.post(f"{BASE_TG}/sendMessage", json={"chat_id": CHANNEL_ID, "text": txt, "parse_mode": "HTML"}, timeout=3).json()
                                     ch_mid = rr.get("result", {}).get("message_id")
@@ -1011,7 +1039,6 @@ def main_handler():
                                     save_post_owner(ch_mid, owner_id)
                                 except Exception as e:
                                     print(f"Approval channel media failed: {e}")
-                                # X fail-safe
                                 try:
                                     if pend.get("type") == "photo":
                                         _ok_appr, x_url_appr = safe_post_to_x(cap2, media_for_x, is_video=False)
@@ -1038,7 +1065,7 @@ def main_handler():
                             edit_message_fast(chat_id, msg_id, "Rejected.", get_admin_panel())
                             if owner_id: send_message(owner_id, "Your menfess was rejected by the administrator.", get_back_keyboard())
             elif cdata == "admin_panel":
-                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V117.6\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
+                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V117.7\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
             elif cdata == "admin_users":
                 send_user_list(chat_id)
@@ -1149,7 +1176,7 @@ def catch_all(path):
         except:
             pass
         return main_handler()
-    return "JogjaLend Bot V117.6 OK", 200
+    return "JogjaLend Bot V117.7 OK", 200
 
 if __name__ == "__main__":
     app.run()
