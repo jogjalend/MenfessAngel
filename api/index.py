@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot Angel V117.8 - SPEED + Data 100% Kesimpan DB + Logo Utuh
+# api/index.py - JogjaLend Bot Angel V117.9 - Fullfix: Sync Handler + Del Aman + Pool Aman + Logo Fix
 from flask import Flask, request, jsonify
 import os, requests, io, re, traceback, copy, time, hmac, hashlib, base64, urllib.parse, secrets, json, threading
 from datetime import datetime, timezone, timedelta
@@ -54,7 +54,8 @@ def get_pool():
     if _db_pool or not DATABASE_URL or not pool:
         return _db_pool
     try:
-        _db_pool = pool.SimpleConnectionPool(1, 3, DATABASE_URL, connect_timeout=2)
+        # V117.9 FIX: Pool 1,5 biar Channel+X+Save tidak rebutan koneksi
+        _db_pool = pool.SimpleConnectionPool(1, 5, DATABASE_URL, connect_timeout=2)
     except:
         _db_pool = None
     return _db_pool
@@ -102,7 +103,6 @@ def init_db():
     finally: release_db(db)
 
 def get_setting(k, default=""):
-    # SPEED: cache 5 menit, hit DB cuma sekali
     if k in SETTINGS_CACHE:
         val, ts = SETTINGS_CACHE[k]
         if time.time() - ts < SETTINGS_TTL:
@@ -118,7 +118,6 @@ def get_setting(k, default=""):
     except: return SETTINGS_CACHE.get(k, (default, 0))[0]
     finally: release_db(db)
 
-# V117.8 - FIX DATA: set_setting SINKRON, jangan background. Kalau background bisa kepotong Vercel, pending / approval hilang.
 def set_setting(k, v):
     SETTINGS_CACHE[k] = (v, time.time())
     db = get_db()
@@ -321,7 +320,7 @@ def load_user_from_db(uid):
     finally: release_db(db)
     return None
 
-# V117.8 - FIX DATA: save_user SINKRON, pakai pool jadi tetap cepat 5-20ms, dijamin kesimpan sebelum balas
+# V117.9 FIX: Jangan ganti objek USERS[uid], update in-place biar referensi di process_update tidak ketinggalan
 def save_user_to_db(uid, user):
     db = get_db()
     if not db: return
@@ -329,8 +328,9 @@ def save_user_to_db(uid, user):
         cur = db.cursor()
         cur.execute("INSERT INTO menfess_users (user_id, name, username, threads_on, today_text, today_media, last_date, banned, total_text, total_media, total_chars, admin_target, warn, x_premium_until, waiting_proof, x_auto) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (user_id) DO UPDATE SET name=%s, username=%s, threads_on=%s, today_text=%s, today_media=%s, last_date=%s, banned=%s, total_text=%s, total_media=%s, total_chars=%s, admin_target=%s, warn=%s, x_premium_until=%s, waiting_proof=%s, x_auto=%s", (uid, user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars", 0), user.get("admin_target", "both"), user.get("warn", 0), user.get("x_premium_until",""), user.get("waiting_proof", False), user.get("x_auto", True), user["name"], user["username"], user["threads_on"], user["today_text"], user["today_media"], user["last_date"], user["banned"], user["total_text"], user["total_media"], user.get("total_chars", 0), user.get("admin_target", "both"), user.get("warn", 0), user.get("x_premium_until",""), user.get("waiting_proof", False), user.get("x_auto", True)))
         db.commit(); cur.close()
-        # Update cache memori juga biar konsisten
-        USERS[uid] = dict(user)
+        # FIX: update in-place, jangan USERS[uid] = dict(user)
+        if uid in USERS and USERS[uid] is not user:
+            USERS[uid].update(user)
     except Exception as e:
         print(f"save_user error: {e}")
     finally: release_db(db)
@@ -339,7 +339,7 @@ def get_user(uid):
     u = USERS[uid]
     if u["name"] == "" and DATABASE_URL:
         d = load_user_from_db(uid)
-        if d: USERS[uid] = d; u = USERS[uid]
+        if d: USERS[uid].update(d); u = USERS[uid]
     today = datetime.now(WIB).strftime("%Y-%m-%d")
     if u["last_date"] != today:
         u["today_text"] = 0; u["today_media"] = 0; u["last_date"] = today
@@ -355,7 +355,6 @@ def is_premium_active(user):
         return datetime.now(WIB) <= dt + timedelta(days=1)
     except: return False
 
-# V117.8 - FIX DATA: save_post_owner SINKRON juga, biar tombol Delete selalu bisa jalan
 def save_post_owner(msg_id, owner_id):
     if not msg_id: return
     db = get_db()
@@ -480,11 +479,16 @@ def add_watermark(photo_bytes):
         if not logo_orig: return None
         base = Image.open(io.BytesIO(photo_bytes)).convert("RGBA")
         w, h = base.size
+        # V117.9 FIX: Logo 25% dari lebar foto, tapi tidak dipaksa 180 kalau foto kecil
         target_w = int(w * 0.25)
         if target_w > logo_orig.width:
             target_w = logo_orig.width
-        if target_w < 180:
-            target_w = min(180, logo_orig.width)
+        # Kalau foto kecil, jangan paksa gede, maksimal 35% dari foto
+        max_for_small = int(w * 0.35)
+        if target_w > max_for_small:
+            target_w = max_for_small
+        if target_w < 60:
+            target_w = min(60, logo_orig.width, max_for_small)
         logo = logo_orig.resize((target_w, int(target_w * logo_orig.height / logo_orig.width)), Image.LANCZOS)
         margin = max(15, int(w * 0.02))
         overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
@@ -775,12 +779,12 @@ def process_update(data):
                         target = user.get("admin_target", "both") if is_admin(chat_id) else ("both" if user.get("threads_on") else "channel")
                         ch_id = None
                         x_url = None
+                        # V117.9 FIX: save_post_owner dipindah keluar Thread, biar tidak rebutan pool DB
                         def _to_channel():
                             nonlocal ch_id
                             if target in ["channel", "both"]:
                                 r = TG.post(f"{BASE_TG}/sendMessage", json={"chat_id": CHANNEL_ID, "text": clean, "parse_mode": "HTML"}, timeout=3).json()
                                 ch_id = r.get("result", {}).get("message_id")
-                                save_post_owner(ch_id, uid)
                         def _to_x():
                             nonlocal x_url
                             if (is_admin(chat_id) or (is_premium_active(user) and user.get("x_auto", True))) and get_setting('x_auto_share', 'off') == 'on':
@@ -790,6 +794,8 @@ def process_update(data):
                         t1.start(); t2.start()
                         if target in ["threads", "both"]: post_to_threads(clean)
                         t1.join(timeout=4); t2.join(timeout=8)
+                        if ch_id:
+                            save_post_owner(ch_id, uid)
                         user["today_text"] += 1; user["total_text"] += 1; user["total_chars"] = user.get("total_chars", 0)+len(text)
                         save_user_to_db(uid, user); send_success(chat_id, user, ch_id, target, x_url)
                 if "photo" in msg or "video" in msg:
@@ -826,6 +832,7 @@ def process_update(data):
                                 wm.seek(0); wm_bytes = wm.read(); wm.seek(0)
                             else:
                                 wm_bytes = raw
+                        # V117.9 FIX: save_post_owner di luar Thread
                         def _ch_media():
                             nonlocal ch_id
                             if target in ["channel", "both"]:
@@ -836,7 +843,6 @@ def process_update(data):
                                         r = TG.post(f"{BASE_TG}/sendPhoto", json={"chat_id": CHANNEL_ID, "photo": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=3).json(); ch_id = r.get("result", {}).get("message_id")
                                 else:
                                     r = TG.post(f"{BASE_TG}/sendVideo", json={"chat_id": CHANNEL_ID, "video": fid, "caption": base_cap, "parse_mode": "HTML"}, timeout=4).json(); ch_id = r.get("result", {}).get("message_id")
-                                save_post_owner(ch_id, uid)
                         def _x_media():
                             nonlocal x_url
                             if (is_admin(chat_id) or (is_premium_active(user) and user.get("x_auto", True))) and get_setting('x_auto_share', 'off') == 'on':
@@ -853,6 +859,8 @@ def process_update(data):
                         t1.start(); t2.start()
                         if target in ["threads", "both"]: post_to_threads(base_cap)
                         t1.join(timeout=5); t2.join(timeout=9)
+                        if ch_id:
+                            save_post_owner(ch_id, uid)
                         user["today_media"] += 1; user["total_media"] += 1
                         save_user_to_db(uid, user); send_success(chat_id, user, ch_id, target, x_url)
         if "callback_query" in data:
@@ -887,7 +895,7 @@ def process_update(data):
                 kb = {"inline_keyboard": [[{"text": f"Threads: {'ON' if user.get('threads_on') else 'OFF'}", "callback_data": "threads_toggle"}], [{"text": "threads.net/jogjalend", "url": THREADS_URL}], [{"text": "Back", "callback_data": "back_home"}]]}
                 edit_message_fast(chat_id, msg_id, f"Threads {'ON' if user['threads_on'] else 'OFF'}!\nLink: threads.net/jogjalend", kb)
             elif cdata == "info_bot":
-                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V117.8 - Data Aman\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
+                edit_message_fast(chat_id, msg_id, "Bot Information\n\nJogjaLend Bot is a bot developed by the @jogja_lend team.\n<pre>Bot Version : V117.9 - Fullfix\nDatabase  : PostgreSQL</pre>\nFor questions regarding bot usage, feature suggestions, or bug reports, please contact @joglendsupportBot", get_back_keyboard())
             elif cdata == "x_premium":
                 if is_premium_active(user):
                     auto = "ON" if user.get("x_auto", True) else "OFF"
@@ -995,7 +1003,7 @@ def process_update(data):
                             edit_message_fast(chat_id, msg_id, "Rejected.", get_admin_panel())
                             if owner_id: send_message(owner_id, "Your menfess was rejected by the administrator.", get_back_keyboard())
             elif cdata == "admin_panel":
-                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V117.8\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
+                if is_admin(chat_id): edit_message_fast(chat_id, msg_id, M("ADMIN PANEL V117.9\n------------------------------\nPlease select an admin menu:"), get_admin_panel())
                 else: edit_message_fast(chat_id, msg_id, M("Access denied. Admin only."), get_back_keyboard())
             elif cdata == "admin_users":
                 send_user_list(chat_id)
@@ -1083,6 +1091,7 @@ def process_update(data):
             elif cdata == "admin_set_both":
                 if is_admin(chat_id): user["admin_target"] = "both"; save_user_to_db(uid, user); edit_message_fast(chat_id, msg_id, M(f"Set to BOTH\n------------------------------\nMenfess will be sent to Channel + Threads"), get_channel_target_keyboard(user))
             elif cdata.startswith("del_"):
+                # V117.9 FIX: Kalau owner tidak ditemukan, TOLAK, jangan biarkan siapapun hapus
                 try:
                     mid = int(cdata.replace("del_", ""))
                     db = get_db()
@@ -1090,7 +1099,9 @@ def process_update(data):
                     if db:
                         cur = db.cursor(); cur.execute("SELECT owner_id FROM menfess_posts WHERE msg_id=%s", (str(mid),)); rr = cur.fetchone(); cur.close(); release_db(db)
                         if rr: owner = rr[0]
-                    if owner and str(owner) != uid and not is_admin(chat_id):
+                    if not owner:
+                        edit_message_fast(chat_id, msg_id, "Owner tidak ditemukan, tidak bisa dihapus. Post ini mungkin sudah lama / DB belum sempat simpan.", get_back_keyboard())
+                    elif str(owner) != uid and not is_admin(chat_id):
                         edit_message_fast(chat_id, msg_id, "You can only delete your own post.", get_back_keyboard())
                     else:
                         TG.post(f"{BASE_TG}/deleteMessage", json={"chat_id": CHANNEL_ID, "message_id": mid}, timeout=2)
@@ -1111,7 +1122,7 @@ def process_update(data):
 @app.route("/webhook", methods=["GET", "POST"])
 def main_handler():
     try:
-        if request.method == "GET": return "JogjaLend Bot V117.8 OK", 200
+        if request.method == "GET": return "JogjaLend Bot V117.9 OK", 200
         data = request.get_json(force=True, silent=True) or {}
         upd_id = data.get("update_id")
         if upd_id is not None:
@@ -1121,8 +1132,9 @@ def main_handler():
                 SEEN_UPDATES.add(upd_id)
                 if len(SEEN_UPDATES) > 500:
                     SEEN_UPDATES.clear()
-        # Ngebut: balas ok dulu, proses di Thread. Tapi DB write di dalam process_update tetap SINKRON, jadi data aman.
-        threading.Thread(target=process_update, args=(data,), daemon=True).start()
+        # V117.9 FIX: JANGAN pakai Thread di sini. Vercel freeze Thread setelah return ok.
+        # Proses langsung, baru return ok. Ngebut tetap dari cache + pool + timeout pendek.
+        process_update(data)
         return "ok", 200
     except Exception as e:
         print(f"main_handler error: {e}")
@@ -1138,7 +1150,7 @@ def catch_all(path):
         except:
             pass
         return main_handler()
-    return "JogjaLend Bot V117.8 OK", 200
+    return "JogjaLend Bot V117.9 OK", 200
 
 if __name__ == "__main__":
     app.run()
