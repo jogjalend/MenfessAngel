@@ -2,135 +2,88 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Menfess Angel 💌</title>
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Menfess Angel - Kirim Promote</title>
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{
-    font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
-    background:#0a0a0a;
-    min-height:100vh;display:flex;justify-content:center;padding:16px;color:#fff;
-  }
-  .card{
-    background:#111;
-    width:100%;max-width:420px;height:fit-content;border-radius:24px;padding:22px;
-    border:1px solid rgba(255,255,255,.25);box-shadow:0 10px 40px rgba(0,0,0,.6)
-  }
-  h1{text-align:center;font-size:22px;margin-bottom:4px}
-  p.sub{text-align:center;color:#d1d5db;font-size:12px;line-height:1.6;margin-bottom:6px}
-  label{display:block;font-weight:700;font-size:13px;margin:16px 0 6px}
-  input,textarea{
-    width:100%;padding:12px 14px;border:1px solid rgba(255,255,255,.35);border-radius:14px;
-    font-size:14px;font-family:inherit;background:#000;color:#fff;outline:none
-  }
-  input::placeholder,textarea::placeholder{color:#9ca3af}
-  input:focus,textarea:focus{border-color:#fff}
-  textarea{min-height:110px;resize:vertical}
-  .upload{
-    border:2px dashed rgba(255,255,255,.5);background:rgba(255,255,255,.04);border-radius:14px;
-    padding:14px;text-align:center;cursor:pointer;font-weight:700;font-size:13px;display:block
-  }
-  #foto{display:none}
-  #preview{width:100%;border-radius:14px;margin-top:10px;display:none;max-height:300px;object-fit:cover}
-  #hapusFoto{display:none;margin-top:8px;width:100%;padding:8px;border:0;border-radius:10px;background:#fee2e2;color:#dc2626;font-weight:700;cursor:pointer;font-family:inherit}
-  .row{display:flex;gap:10px;margin-top:14px}
-  .row a{
-    flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
-    border:1px solid rgba(255,255,255,.4);border-radius:14px;padding:12px 4px;
-    font-size:13px;font-weight:700;text-decoration:none;color:#fff;background:rgba(255,255,255,.04);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis
-  }
-  button#kirim{
-    width:100%;margin-top:16px;padding:14px;border:0;border-radius:14px;
-    background:linear-gradient(180deg,#e5e7eb,#9ca3af);color:#000;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit
-  }
-  button#kirim:disabled{opacity:.6}
-  #msg{text-align:center;margin-top:12px;font-size:14px;font-weight:600;display:none;line-height:1.5}
-  #seeon{display:none;margin-top:12px;gap:8px}
-  #seeon a{flex:1;text-align:center;padding:11px 4px;border-radius:12px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap}
-  #seeon a.tg{background:#fff;color:#000}
-  #seeon a.x{background:#000;color:#fff;border:1px solid #fff}
-  .hint{text-align:center;font-size:11px;color:#9ca3af;margin-top:6px}
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, sans-serif; }
+  body { background: #000; color: #fff; display: flex; justify-content: center; padding: 20px 12px; }
+  .card { width: 100%; max-width: 420px; border: 1px solid #333; border-radius: 22px; padding: 24px 18px; background: #0a0a0a; }
+  h1 { text-align: center; font-size: 28px; letter-spacing: 0.5px; }
+  .subtitle { text-align: center; color: #ccc; font-size: 15px; margin-top: 8px; line-height: 1.5; }
+  label { display: block; margin: 22px 0 8px; font-weight: 600; font-size: 16px; }
+  input, textarea { width: 100%; background: #000; border: 1px solid #444; border-radius: 14px; color: #fff; padding: 14px; font-size: 15px; outline: none; }
+  textarea { min-height: 110px; resize: vertical; }
+  .file-box { border: 1.5px dashed #888; border-radius: 14px; padding: 16px; text-align: center; cursor: pointer; font-size: 15px; }
+  .file-box input { display: none; }
+  .hint { text-align: center; color: #888; font-size: 13px; margin-top: 8px; }
+  .row { display: flex; gap: 10px; margin-top: 18px; }
+  .row a { flex: 1; text-align: center; text-decoration: none; color: #fff; border: 1px solid #444; border-radius: 14px; padding: 12px; font-size: 15px; }
+  #preview { width: 100%; border-radius: 12px; margin-top: 10px; display: none; }
+  button.submit { width: 100%; margin-top: 14px; background: #e8e8e8; color: #000; border: none; border-radius: 14px; padding: 15px; font-size: 17px; font-weight: 700; cursor: pointer; }
+  #status { text-align: center; margin-top: 12px; font-size: 14px; color: #aaa; }
 </style>
 </head>
 <body>
 <div class="card">
   <h1>💌 Menfess Angel</h1>
-  <p class="sub">Kirim Promote Disini<br>Promote jasa & konten kamu disini.<br>#jogjalend</p>
+  <div class="subtitle">
+    Promote jasa & konten kamu disini.<br>#jogjalend
+  </div>
 
   <label>Username Telegram kamu</label>
-  <input id="username" placeholder="@username" autocomplete="off">
+  <input id="username" placeholder="@username" />
 
   <label>Foto Promote *</label>
-  <label class="upload" for="foto">📷 Pilih Foto / Poster Promote</label>
-  <input type="file" id="foto" accept="image/*" onchange="previewFoto(event)">
-  <img id="preview" alt="">
-  <button id="hapusFoto" type="button" onclick="hapusFoto()">❌ Hapus Foto</button>
+  <label class="file-box" for="photo">📷 Pilih Foto / Poster Promote
+    <input type="file" id="photo" accept="image/*" />
+  </label>
   <div class="hint">PNG, JPG maks 5MB</div>
+  <img id="preview" />
 
   <label>Deskripsi *</label>
   <textarea id="content" placeholder="Tulis deskripsi promote kamu di sini..."></textarea>
 
   <div class="row">
-    <a href="https://t.me/menfessangel" target="_blank" rel="noopener">📢 Channel</a>
-    <a href="https://t.me/jogja_lend" target="_blank" rel="noopener">✈️ Hubungi Admin</a>
+    <a href="https://t.me/menfessangel" target="_blank">📣 Channel</a>
+    <a href="https://t.me/essangel" target="_blank">✈️ Hubungi Admin</a>
   </div>
 
-  <button id="kirim" type="button" onclick="kirim()">✨ Kirim Promote</button>
-  <div id="msg"></div>
-
-  <div id="seeon">
-    <a class="tg" href="https://t.me/menfessangel" target="_blank" rel="noopener">✈️ See on Telegram</a>
-    <a class="x" href="https://x.com/jogcorp" target="_blank" rel="noopener">𝕏 See on X</a>
-  </div>
+  <button class="submit" onclick="kirim()">✨ Kirim Promote</button>
+  <div id="status"></div>
 </div>
 
 <script>
-  if(window.Telegram && Telegram.WebApp){
-    try{ Telegram.WebApp.ready(); Telegram.WebApp.expand(); Telegram.WebApp.setHeaderColor('#0a0a0a'); Telegram.WebApp.setBackgroundColor('#0a0a0a'); Telegram.WebApp.disableVerticalSwipes(); }catch(e){}
-  }
-  let fotoBase64 = '';
-  function previewFoto(e){
-    const file = e.target.files[0];
-    if(!file) return;
-    if(file.size > 5*1024*1024){ alert('Foto maks 5MB ya!'); e.target.value=''; return; }
+  const photoInput = document.getElementById('photo');
+  const preview = document.getElementById('preview');
+  photoInput.addEventListener('change', () => {
+    const f = photoInput.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = e => { preview.src = e.target.result; preview.style.display = 'block'; };
+    r.readAsDataURL(f);
+  });
+
+  async function kirim() {
+    const username = document.getElementById('username').value.trim();
+    const content = document.getElementById('content').value.trim();
+    const file = photoInput.files[0];
+    const status = document.getElementById('status');
+    if (!content || !file) { status.textContent = 'Foto & deskripsi wajib diisi'; return; }
+    status.textContent = 'Mengirim...';
     const reader = new FileReader();
-    reader.onload = function(ev){
-      fotoBase64 = ev.target.result;
-      const img = document.getElementById('preview');
-      img.src = fotoBase64; img.style.display='block';
-      document.getElementById('hapusFoto').style.display='block';
+    reader.onload = async () => {
+      try {
+        const res = await fetch('/submit_web', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, content, photo: reader.result })
+        });
+        const j = await res.json();
+        if (j.ok) { status.textContent = '✅ Terkirim! Menunggu approve admin.'; }
+        else { status.textContent = '❌ ' + (j.error || 'Gagal'); }
+      } catch(e) { status.textContent = '❌ Gagal konek ke server'; }
     };
     reader.readAsDataURL(file);
-  }
-  function hapusFoto(){
-    fotoBase64=''; document.getElementById('foto').value='';
-    document.getElementById('preview').style.display='none';
-    document.getElementById('hapusFoto').style.display='none';
-  }
-  async function kirim(){
-    const username=document.getElementById('username').value.trim();
-    const content=document.getElementById('content').value.trim();
-    const btn=document.getElementById('kirim');
-    const msg=document.getElementById('msg');
-    const seeon=document.getElementById('seeon');
-    if(!fotoBase64){ msg.style.display='block'; msg.style.color='#f87171'; msg.innerText='Pilih foto-nya dulu dong 📷'; return; }
-    if(!content){ msg.style.display='block'; msg.style.color='#f87171'; msg.innerText='Isi deskripsinya dulu dong 🥺'; return; }
-    btn.disabled=true; btn.innerText='Mengirim...';
-    msg.style.display='block'; msg.style.color='#d1d5db'; msg.innerText='Mengirim...';
-    seeon.style.display='none';
-    try{
-      const res=await fetch('/submit_web',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,content,toX:false,anon:true,photo:fotoBase64})});
-      const data=await res.json();
-      if(data.ok){
-        msg.style.color='#4ade80'; msg.innerText='✅ Terkirim! Menunggu approval admin 💌\nCek nanti di sini ya:';
-        seeon.style.display='flex';
-        document.getElementById('content').value=''; hapusFoto();
-        if(window.Telegram && Telegram.WebApp) Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-      }else{ msg.style.color='#f87171'; msg.innerText='❌ Gagal: '+(data.error||'coba lagi'); }
-    }catch(e){ msg.style.color='#f87171'; msg.innerText='❌ Gagal konek ke server, coba lagi'; }
-    btn.disabled=false; btn.innerText='✨ Kirim Promote';
   }
 </script>
 </body>
