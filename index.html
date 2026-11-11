@@ -7,27 +7,28 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:linear-gradient(180deg,#8b5cf6,#6d28d9);min-height:100vh;display:flex;justify-content:center;padding:16px;color:#1f2937}
+  body{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;background:linear-gradient(180deg,#8b5cf6,#6d28d9);min-height:100vh;display:flex;justify-content:center;padding:16px;color:#1f2937}
   .card{background:#fff;width:100%;max-width:420px;height:fit-content;border-radius:24px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
-  h1{text-align:center;margin:0 0 4px;font-size:24px}
+  h1{text-align:center;margin:0 0 4px;font-size:24px;font-family:inherit}
   p.sub{text-align:center;margin:0 0 18px;color:#6b7280;font-size:13px;line-height:1.5}
-  label{font-weight:700;font-size:13px;display:block;margin:14px 0 6px}
-  input,textarea{width:100%;padding:12px 14px;border:2px solid #e5e7eb;border-radius:14px;font-size:15px;outline:none;font-family:inherit;background:#f9fafb}
+  label{font-weight:700;font-size:13px;display:block;margin:14px 0 6px;font-family:inherit}
+  input,textarea{width:100%;padding:12px 14px;border:2px solid #e5e7eb;border-radius:14px;font-size:15px;outline:none;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;background:#f9fafb}
   input:focus,textarea:focus{border-color:#8b5cf6;background:#fff}
   textarea{min-height:110px;resize:vertical}
-  .upload{border:2px dashed #d8b4fe;background:#faf5ff;border-radius:14px;padding:14px;text-align:center;cursor:pointer;color:#6d28d9;font-weight:700;font-size:14px;display:block}
+  .upload{border:2px dashed #d8b4fe;background:#faf5ff;border-radius:14px;padding:14px;text-align:center;cursor:pointer;color:#6d28d9;font-weight:700;font-size:14px;display:block;font-family:inherit}
   #foto{display:none}
   #preview{width:100%;border-radius:14px;margin-top:10px;display:none;max-height:300px;object-fit:cover}
-  #hapusFoto{display:none;margin-top:8px;width:100%;padding:8px;border:0;border-radius:10px;background:#fee2e2;color:#dc2626;font-weight:700;cursor:pointer}
+  #hapusFoto{display:none;margin-top:8px;width:100%;padding:8px;border:0;border-radius:10px;background:#fee2e2;color:#dc2626;font-weight:700;cursor:pointer;font-family:inherit}
   .row{display:flex;gap:10px;margin-top:14px}
-  .check{flex:1;display:flex;align-items:center;gap:8px;border:2px solid #e5e7eb;border-radius:14px;padding:11px;font-size:14px;font-weight:600;cursor:pointer}
+  .check{flex:1;display:flex;align-items:center;gap:8px;border:2px solid #e5e7eb;border-radius:14px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
   .check.active{border-color:#8b5cf6;background:#f5f3ff}
   .check input{width:18px;height:18px;accent-color:#8b5cf6}
-  button#kirim{width:100%;margin-top:16px;padding:14px;border:0;border-radius:14px;background:#7c3aed;color:#fff;font-size:16px;font-weight:800;cursor:pointer}
+  .admin{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border:2px solid #e5e7eb;border-radius:14px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;color:#1f2937;background:#fff;font-family:inherit}
+  button#kirim{width:100%;margin-top:16px;padding:14px;border:0;border-radius:14px;background:#7c3aed;color:#fff;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit}
   button#kirim:disabled{opacity:.6}
-  #msg{text-align:center;margin-top:12px;font-size:14px;font-weight:600;display:none}
+  #msg{text-align:center;margin-top:12px;font-size:14px;font-weight:600;display:none;font-family:inherit}
   #seeon{display:none;margin-top:12px;gap:8px}
-  #seeon a{flex:1;text-align:center;padding:11px;border-radius:12px;text-decoration:none;font-weight:700;font-size:13px}
+  #seeon a{flex:1;text-align:center;padding:11px;border-radius:12px;text-decoration:none;font-weight:700;font-size:13px;font-family:inherit}
   #seeon a.tg{background:#0088cc;color:#fff}
   #seeon a.x{background:#000;color:#fff}
 </style>
@@ -51,7 +52,7 @@
 
   <div class="row">
     <label class="check active" id="boxX"><input type="checkbox" id="toX" checked> Post ke X juga</label>
-    <label class="check" id="boxAnon"><input type="checkbox" id="anon" checked> Anonim</label>
+    <a class="admin" href="https://t.me/jogja_lend" target="_blank">✈️ Hubungi Admin</a>
   </div>
 
   <button id="kirim" onclick="kirim()">✨ Kirim Promote</button>
@@ -86,12 +87,10 @@
     document.getElementById('hapusFoto').style.display='none';
   }
   document.getElementById('toX').addEventListener('change', e=>{ document.getElementById('boxX').classList.toggle('active', e.target.checked); });
-  document.getElementById('anon').addEventListener('change', e=>{ document.getElementById('boxAnon').classList.toggle('active', e.target.checked); });
   async function kirim(){
     const username=document.getElementById('username').value.trim();
     const content=document.getElementById('content').value.trim();
     const toX=document.getElementById('toX').checked;
-    const anon=document.getElementById('anon').checked;
     const btn=document.getElementById('kirim');
     const msg=document.getElementById('msg');
     const seeon=document.getElementById('seeon');
@@ -101,7 +100,7 @@
     msg.style.display='block'; msg.style.color='#6b7280'; msg.innerText='Mengirim...';
     seeon.style.display='none';
     try{
-      const res=await fetch('/submit_web',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,content,toX,anon,photo:fotoBase64})});
+      const res=await fetch('/submit_web',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,content,toX,anon:true,photo:fotoBase64})});
       const data=await res.json();
       if(data.ok){
         msg.style.color='green'; msg.innerText='✅ Terkirim! Menunggu approval admin 💌\nCek nanti di sini ya:';
