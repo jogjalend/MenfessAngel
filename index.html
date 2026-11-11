@@ -7,133 +7,122 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   *{box-sizing:border-box}
-  body{
-    margin:0; font-family: system-ui, -apple-system, sans-serif;
-    background:#7c3aed; background:linear-gradient(180deg,#8b5cf6,#6d28d9);
-    min-height:100vh; display:flex; justify-content:center; padding:16px;
-    color:#1f2937;
-  }
-  .card{
-    background:#fff; width:100%; max-width:420px; height:fit-content;
-    border-radius:24px; padding:22px; box-shadow:0 10px 30px rgba(0,0,0,.25);
-  }
-  h1{text-align:center; margin:0 0 4px; font-size:24px}
-  p.sub{text-align:center; margin:0 0 18px; color:#6b7280; font-size:13px}
-  label{font-weight:700; font-size:13px; display:block; margin:14px 0 6px}
-  input, textarea{
-    width:100%; padding:12px 14px; border:2px solid #e5e7eb; border-radius:14px;
-    font-size:15px; outline:none; font-family:inherit; background:#f9fafb;
-  }
-  input:focus, textarea:focus{border-color:#8b5cf6; background:#fff}
-  textarea{min-height:130px; resize:vertical}
-  .row{display:flex; gap:10px; margin-top:14px}
-  .check{
-    flex:1; display:flex; align-items:center; gap:8px;
-    border:2px solid #e5e7eb; border-radius:14px; padding:11px; font-size:14px; font-weight:600; cursor:pointer;
-  }
-  .check.active{border-color:#8b5cf6; background:#f5f3ff}
-  .check input{width:18px; height:18px; accent-color:#8b5cf6}
-  button#kirim{
-    width:100%; margin-top:16px; padding:14px; border:0; border-radius:14px;
-    background:#7c3aed; color:#fff; font-size:16px; font-weight:800; cursor:pointer;
-  }
+  body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:linear-gradient(180deg,#8b5cf6,#6d28d9);min-height:100vh;display:flex;justify-content:center;padding:16px;color:#1f2937}
+  .card{background:#fff;width:100%;max-width:420px;height:fit-content;border-radius:24px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  h1{text-align:center;margin:0 0 4px;font-size:24px}
+  p.sub{text-align:center;margin:0 0 18px;color:#6b7280;font-size:13px;line-height:1.5}
+  label{font-weight:700;font-size:13px;display:block;margin:14px 0 6px}
+  input,textarea{width:100%;padding:12px 14px;border:2px solid #e5e7eb;border-radius:14px;font-size:15px;outline:none;font-family:inherit;background:#f9fafb}
+  input:focus,textarea:focus{border-color:#8b5cf6;background:#fff}
+  textarea{min-height:110px;resize:vertical}
+  .upload{border:2px dashed #d8b4fe;background:#faf5ff;border-radius:14px;padding:14px;text-align:center;cursor:pointer;color:#6d28d9;font-weight:700;font-size:14px}
+  .upload input{display:none}
+  #preview{width:100%;border-radius:14px;margin-top:10px;display:none;max-height:300px;object-fit:cover}
+  #hapusFoto{display:none;margin-top:8px;width:100%;padding:8px;border:0;border-radius:10px;background:#fee2e2;color:#dc2626;font-weight:700;cursor:pointer}
+  .row{display:flex;gap:10px;margin-top:14px}
+  .check{flex:1;display:flex;align-items:center;gap:8px;border:2px solid #e5e7eb;border-radius:14px;padding:11px;font-size:14px;font-weight:600;cursor:pointer}
+  .check.active{border-color:#8b5cf6;background:#f5f3ff}
+  .check input{width:18px;height:18px;accent-color:#8b5cf6}
+  button#kirim{width:100%;margin-top:16px;padding:14px;border:0;border-radius:14px;background:#7c3aed;color:#fff;font-size:16px;font-weight:800;cursor:pointer}
   button#kirim:disabled{opacity:.6}
-  #msg{text-align:center; margin-top:12px; font-size:14px; font-weight:600; display:none}
-  .footer{text-align:center; margin-top:14px; font-size:12px; color:#9ca3af}
-  .footer a{color:#7c3aed; text-decoration:none; font-weight:700}
+  #msg{text-align:center;margin-top:12px;font-size:14px;font-weight:600;display:none}
+  #seeon{display:none;margin-top:12px;gap:8px}
+  #seeon a{flex:1;text-align:center;padding:11px;border-radius:12px;text-decoration:none;font-weight:700;font-size:13px}
+  #seeon a.tg{background:#0088cc;color:#fff}
+  #seeon a.x{background:#000;color:#fff}
+  .footer{text-align:center;margin-top:14px;font-size:12px;color:#9ca3af}
+  .footer a{color:#7c3aed;text-decoration:none;font-weight:700}
 </style>
 </head>
 <body>
 <div class="card">
   <h1>💌 Menfess Angel</h1>
-  <p class="sub">Kirim menfess anonim, 100% rahasia<br>#jogjalend</p>
+  <p class="sub">Kirim Promote Disini<br>Promote jasa & konten kamu disini.<br>Gratis & 100% anonim.<br>#jogjalend</p>
 
   <label>Username X / IG kamu (opsional)</label>
   <input id="username" placeholder="@username kamu - boleh kosong">
 
-  <label>Isi Menfess *</label>
-  <textarea id="content" placeholder="Tulis menfess kamu di sini... curhat, crush, confession, apa aja!"></textarea>
+  <label>Foto Promote *</label>
+  <label class="upload" for="foto">📷 Pilih Foto / Poster Promote</label>
+  <input type="file" id="foto" accept="image/*" onchange="previewFoto(event)">
+  <img id="preview">
+  <button id="hapusFoto" onclick="hapusFoto()">❌ Hapus Foto</button>
+
+  <label>Deskripsi *</label>
+  <textarea id="content" placeholder="Tulis deskripsi promote kamu di sini... Jasa apa, konten apa, deskripsi, harga, link, kontak, dll."></textarea>
 
   <div class="row">
-    <label class="check active" id="boxX">
-      <input type="checkbox" id="toX" checked> Post ke X juga
-    </label>
-    <label class="check" id="boxAnon">
-      <input type="checkbox" id="anon" checked> Anonim
-    </label>
+    <label class="check active" id="boxX"><input type="checkbox" id="toX" checked> Post ke X juga</label>
+    <label class="check" id="boxAnon"><input type="checkbox" id="anon" checked> Anonim</label>
   </div>
 
-  <button id="kirim" onclick="kirim()">✨ Kirim Menfess</button>
+  <button id="kirim" onclick="kirim()">✨ Kirim Promote</button>
   <div id="msg"></div>
 
+  <div id="seeon">
+    <a class="tg" href="https://t.me/menfessangel" target="_blank">✈️ See on Telegram</a>
+    <a class="x" href="https://x.com/jogcorp" target="_blank">𝕏 See on X</a>
+  </div>
+
   <div class="footer">
-    Lihat menfess di <a href="https://t.me/menfessangel" target="_blank">@menfessangel</a><br>
+    Lihat promote di <a href="https://t.me/menfessangel" target="_blank">@menfessangel</a><br>
     & <a href="https://x.com/jogcorp" target="_blank">@jogcorp</a>
   </div>
 </div>
 
 <script>
-  // === FIX MINI APP TELEGRAM ===
-  if (window.Telegram && Telegram.WebApp) {
-    try {
-      Telegram.WebApp.ready();
-      Telegram.WebApp.expand();
-      Telegram.WebApp.setHeaderColor('#7c3aed');
-      Telegram.WebApp.setBackgroundColor('#7c3aed');
-      // Biar gak bisa di-swipe tutup pas ngetik
-      Telegram.WebApp.disableVerticalSwipes();
-    } catch(e){}
+  if(window.Telegram && Telegram.WebApp){
+    try{ Telegram.WebApp.ready(); Telegram.WebApp.expand(); Telegram.WebApp.setHeaderColor('#7c3aed'); Telegram.WebApp.setBackgroundColor('#7c3aed'); Telegram.WebApp.disableVerticalSwipes(); }catch(e){}
+  }
+  let fotoBase64 = '';
+
+  function previewFoto(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev){
+      fotoBase64 = ev.target.result;
+      const img = document.getElementById('preview');
+      img.src = fotoBase64; img.style.display='block';
+      document.getElementById('hapusFoto').style.display='block';
+    };
+    reader.readAsDataURL(file);
+  }
+  function hapusFoto(){
+    fotoBase64=''; document.getElementById('foto').value='';
+    document.getElementById('preview').style.display='none';
+    document.getElementById('hapusFoto').style.display='none';
   }
 
-  // Toggle visual checkbox
-  document.getElementById('toX').addEventListener('change', e => {
-    document.getElementById('boxX').classList.toggle('active', e.target.checked);
-  });
-  document.getElementById('anon').addEventListener('change', e => {
-    document.getElementById('boxAnon').classList.toggle('active', e.target.checked);
-  });
+  document.getElementById('toX').addEventListener('change', e=>{ document.getElementById('boxX').classList.toggle('active', e.target.checked); });
+  document.getElementById('anon').addEventListener('change', e=>{ document.getElementById('boxAnon').classList.toggle('active', e.target.checked); });
 
   async function kirim(){
-    const username = document.getElementById('username').value.trim();
-    const content = document.getElementById('content').value.trim();
-    const toX = document.getElementById('toX').checked;
-    const anon = document.getElementById('anon').checked;
-    const btn = document.getElementById('kirim');
-    const msg = document.getElementById('msg');
+    const username=document.getElementById('username').value.trim();
+    const content=document.getElementById('content').value.trim();
+    const toX=document.getElementById('toX').checked;
+    const anon=document.getElementById('anon').checked;
+    const btn=document.getElementById('kirim');
+    const msg=document.getElementById('msg');
+    const seeon=document.getElementById('seeon');
 
-    if(!content){
-      msg.style.display='block'; msg.style.color='red';
-      msg.innerText='Isi menfess-nya dulu dong 🥺';
-      return;
-    }
+    if(!fotoBase64){ msg.style.display='block'; msg.style.color='red'; msg.innerText='Pilih foto-nya dulu dong 📷'; return; }
+    if(!content){ msg.style.display='block'; msg.style.color='red'; msg.innerText='Isi deskripsinya dulu dong 🥺'; return; }
 
-    btn.disabled = true; btn.innerText = 'Mengirim...';
-    msg.style.display='block'; msg.style.color='#6b7280';
-    msg.innerText='Mengirim...';
-
+    btn.disabled=true; btn.innerText='Mengirim...';
+    msg.style.display='block'; msg.style.color='#6b7280'; msg.innerText='Mengirim...';
+    seeon.style.display='none';
     try{
-      const res = await fetch('/submit_web', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ username, content, toX, anon })
-      });
-      const data = await res.json();
+      const res=await fetch('/submit_web',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,content,toX,anon,photo:fotoBase64})});
+      const data=await res.json();
       if(data.ok){
-        msg.style.color='green';
-        msg.innerText='✅ Terkirim! Menunggu approval admin 💌';
-        document.getElementById('content').value='';
-        if(window.Telegram && Telegram.WebApp){
-          Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-        }
-      } else {
-        msg.style.color='red';
-        msg.innerText='❌ Gagal: '+(data.error||'coba lagi');
-      }
-    }catch(e){
-      msg.style.color='red';
-      msg.innerText='❌ Gagal konek ke server, coba lagi';
-    }
-    btn.disabled=false; btn.innerText='✨ Kirim Menfess';
+        msg.style.color='green'; msg.innerText='✅ Terkirim! Menunggu approval admin 💌\nCek nanti di sini ya:';
+        seeon.style.display='flex';
+        document.getElementById('content').value=''; hapusFoto();
+        if(window.Telegram && Telegram.WebApp) Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+      }else{ msg.style.color='red'; msg.innerText='❌ Gagal: '+(data.error||'coba lagi'); }
+    }catch(e){ msg.style.color='red'; msg.innerText='❌ Gagal konek ke server, coba lagi'; }
+    btn.disabled=false; btn.innerText='✨ Kirim Promote';
   }
 </script>
 </body>
