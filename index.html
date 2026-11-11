@@ -15,8 +15,8 @@
   input,textarea{width:100%;padding:12px 14px;border:2px solid #e5e7eb;border-radius:14px;font-size:15px;outline:none;font-family:inherit;background:#f9fafb}
   input:focus,textarea:focus{border-color:#8b5cf6;background:#fff}
   textarea{min-height:110px;resize:vertical}
-  .upload{border:2px dashed #d8b4fe;background:#faf5ff;border-radius:14px;padding:14px;text-align:center;cursor:pointer;color:#6d28d9;font-weight:700;font-size:14px}
-  .upload input{display:none}
+  .upload{border:2px dashed #d8b4fe;background:#faf5ff;border-radius:14px;padding:14px;text-align:center;cursor:pointer;color:#6d28d9;font-weight:700;font-size:14px;display:block}
+  #foto{display:none}
   #preview{width:100%;border-radius:14px;margin-top:10px;display:none;max-height:300px;object-fit:cover}
   #hapusFoto{display:none;margin-top:8px;width:100%;padding:8px;border:0;border-radius:10px;background:#fee2e2;color:#dc2626;font-weight:700;cursor:pointer}
   .row{display:flex;gap:10px;margin-top:14px}
@@ -30,17 +30,15 @@
   #seeon a{flex:1;text-align:center;padding:11px;border-radius:12px;text-decoration:none;font-weight:700;font-size:13px}
   #seeon a.tg{background:#0088cc;color:#fff}
   #seeon a.x{background:#000;color:#fff}
-  .footer{text-align:center;margin-top:14px;font-size:12px;color:#9ca3af}
-  .footer a{color:#7c3aed;text-decoration:none;font-weight:700}
 </style>
 </head>
 <body>
 <div class="card">
   <h1>💌 Menfess Angel</h1>
-  <p class="sub">Kirim Promote Disini<br>Promote jasa & konten kamu disini.<br>Gratis & 100% anonim.<br>#jogjalend</p>
+  <p class="sub">Kirim Promote Disini<br>Promote jasa & konten kamu disini.<br>#jogjalend</p>
 
-  <label>Username X / IG kamu (opsional)</label>
-  <input id="username" placeholder="@username kamu - boleh kosong">
+  <label>Username Telegram kamu</label>
+  <input id="username" placeholder="@username Telegram kamu">
 
   <label>Foto Promote *</label>
   <label class="upload" for="foto">📷 Pilih Foto / Poster Promote</label>
@@ -63,11 +61,6 @@
     <a class="tg" href="https://t.me/menfessangel" target="_blank">✈️ See on Telegram</a>
     <a class="x" href="https://x.com/jogcorp" target="_blank">𝕏 See on X</a>
   </div>
-
-  <div class="footer">
-    Lihat promote di <a href="https://t.me/menfessangel" target="_blank">@menfessangel</a><br>
-    & <a href="https://x.com/jogcorp" target="_blank">@jogcorp</a>
-  </div>
 </div>
 
 <script>
@@ -75,7 +68,6 @@
     try{ Telegram.WebApp.ready(); Telegram.WebApp.expand(); Telegram.WebApp.setHeaderColor('#7c3aed'); Telegram.WebApp.setBackgroundColor('#7c3aed'); Telegram.WebApp.disableVerticalSwipes(); }catch(e){}
   }
   let fotoBase64 = '';
-
   function previewFoto(e){
     const file = e.target.files[0];
     if(!file) return;
@@ -93,10 +85,8 @@
     document.getElementById('preview').style.display='none';
     document.getElementById('hapusFoto').style.display='none';
   }
-
   document.getElementById('toX').addEventListener('change', e=>{ document.getElementById('boxX').classList.toggle('active', e.target.checked); });
   document.getElementById('anon').addEventListener('change', e=>{ document.getElementById('boxAnon').classList.toggle('active', e.target.checked); });
-
   async function kirim(){
     const username=document.getElementById('username').value.trim();
     const content=document.getElementById('content').value.trim();
@@ -105,10 +95,8 @@
     const btn=document.getElementById('kirim');
     const msg=document.getElementById('msg');
     const seeon=document.getElementById('seeon');
-
     if(!fotoBase64){ msg.style.display='block'; msg.style.color='red'; msg.innerText='Pilih foto-nya dulu dong 📷'; return; }
     if(!content){ msg.style.display='block'; msg.style.color='red'; msg.innerText='Isi deskripsinya dulu dong 🥺'; return; }
-
     btn.disabled=true; btn.innerText='Mengirim...';
     msg.style.display='block'; msg.style.color='#6b7280'; msg.innerText='Mengirim...';
     seeon.style.display='none';
