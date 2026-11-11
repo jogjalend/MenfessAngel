@@ -1,9 +1,6 @@
 {
-  "version": 2,
-  "builds": [
-    { "src": "api/index.py", "use": "@vercel/python" }
-  ],
-  "routes": [
-    { "src": "/(.*)", "dest": "/api/index.py" }
+  "rewrites": [
+    { "source": "/submit_web", "destination": "/api/submit_web.py" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
