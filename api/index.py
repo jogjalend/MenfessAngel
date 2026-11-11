@@ -1,4 +1,4 @@
-# api/index.py - JogjaLend Bot V117.7 - NO THREADS - Channel + X Fail-Safe + QRIS 1 Pesan + Hapus QR Setelah Bukti + Button 2x2 + X @jogcorp + WEB FORM SUBMIT
+# api/index.py - JogjaLend Bot V117.7 - FIX ROOT / - NO THREADS - Channel + X Fail-Safe + QRIS 1 Pesan + Hapus QR Setelah Bukti + Button 2x2 + X @jogcorp + WEB FORM SUBMIT
 from flask import Flask, request, jsonify
 import os, requests, io, re, traceback, copy, time, hmac, hashlib, base64, urllib.parse, secrets, json
 from datetime import datetime, timezone, timedelta
@@ -760,7 +760,6 @@ def cron_retweet():
     res = auto_retweet_hashtag()
     return res, 200
 
-# ===== BARU: WEB FORM SUBMIT -> KE ADMIN APPROVAL =====
 @app.route("/api/submit", methods=["POST", "OPTIONS"])
 def submit_from_web():
     if request.method == "OPTIONS":
@@ -790,7 +789,8 @@ def submit_from_web():
         print(f"submit web error: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
-@app.route("/", methods=["GET", "POST"])
+# FIX PENTING: JANGAN DAFTARIN "/" DI SINI. "/" BIAR DIHANDLE SAMA index.html STATIS VERCEL.
+# Kalau "/" didaftarin di Flask, buka domain utama bakal muncul "JogjaLend Bot V117.7 OK" terus, HTML gak pernah muncul.
 @app.route("/api/index", methods=["GET", "POST"])
 @app.route("/api/index.py", methods=["GET", "POST"])
 @app.route("/api/webhook", methods=["GET", "POST"])
@@ -1021,7 +1021,6 @@ def main_handler():
                         owner_id = pend.get("owner", "")
                         if cdata.startswith("appr_"):
                             x_url_appr = None
-                            # Jika dari WEB dan minta ke X, paksa posting ke X walau x_auto_share off, selama admin approve
                             force_x = bool(pend.get("to_x") or pend.get("from_web"))
                             if pend.get("type") == "text":
                                 txt = pend.get("text", "")
