@@ -2,56 +2,139 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Menfess Angel - Kirim Menfess</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Menfess Angel 💌</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,-apple-system,sans-serif;background:#0f0f12;color:#fff;min-height:100vh;display:flex;justify-content:center;padding:20px}
-.card{width:100%;max-width:520px;background:#1a1a1f;border-radius:20px;padding:24px;border:1px solid #2a2a30}
-h1{font-size:28px;background:linear-gradient(90deg,#a855f7,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.sub{color:#a1a1aa;margin:8px 0 20px;font-size:14px}
-label{font-size:13px;color:#d4d4d8;display:block;margin-bottom:6px}
-input,textarea{width:100%;background:#0f0f12;border:1px solid #2a2a30;border-radius:12px;color:#fff;padding:12px;font-size:15px;outline:none}
-textarea{min-height:140px;resize:vertical}
-input:focus,textarea:focus{border-color:#a855f7}
-.row{display:flex;gap:8px;align-items:center;margin:14px 0}
-.row input{width:20px;height:20px;accent-color:#a855f7}
-button{width:100%;background:linear-gradient(90deg,#a855f7,#ec4899);border:none;color:#fff;font-weight:700;font-size:16px;padding:14px;border-radius:12px;cursor:pointer}
-button:disabled{opacity:.6}
-#msg{margin-top:12px;text-align:center;font-size:14px;min-height:20px}
-.links{display:flex;gap:10px;margin-top:16px}
-.links a{flex:1;text-align:center;padding:10px;border-radius:10px;background:#26262c;color:#fff;text-decoration:none;font-size:14px}
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family: system-ui, -apple-system, sans-serif;
+    background:#7c3aed; background:linear-gradient(180deg,#8b5cf6,#6d28d9);
+    min-height:100vh; display:flex; justify-content:center; padding:16px;
+    color:#1f2937;
+  }
+  .card{
+    background:#fff; width:100%; max-width:420px; height:fit-content;
+    border-radius:24px; padding:22px; box-shadow:0 10px 30px rgba(0,0,0,.25);
+  }
+  h1{text-align:center; margin:0 0 4px; font-size:24px}
+  p.sub{text-align:center; margin:0 0 18px; color:#6b7280; font-size:13px}
+  label{font-weight:700; font-size:13px; display:block; margin:14px 0 6px}
+  input, textarea{
+    width:100%; padding:12px 14px; border:2px solid #e5e7eb; border-radius:14px;
+    font-size:15px; outline:none; font-family:inherit; background:#f9fafb;
+  }
+  input:focus, textarea:focus{border-color:#8b5cf6; background:#fff}
+  textarea{min-height:130px; resize:vertical}
+  .row{display:flex; gap:10px; margin-top:14px}
+  .check{
+    flex:1; display:flex; align-items:center; gap:8px;
+    border:2px solid #e5e7eb; border-radius:14px; padding:11px; font-size:14px; font-weight:600; cursor:pointer;
+  }
+  .check.active{border-color:#8b5cf6; background:#f5f3ff}
+  .check input{width:18px; height:18px; accent-color:#8b5cf6}
+  button#kirim{
+    width:100%; margin-top:16px; padding:14px; border:0; border-radius:14px;
+    background:#7c3aed; color:#fff; font-size:16px; font-weight:800; cursor:pointer;
+  }
+  button#kirim:disabled{opacity:.6}
+  #msg{text-align:center; margin-top:12px; font-size:14px; font-weight:600; display:none}
+  .footer{text-align:center; margin-top:14px; font-size:12px; color:#9ca3af}
+  .footer a{color:#7c3aed; text-decoration:none; font-weight:700}
 </style>
 </head>
 <body>
 <div class="card">
-<h1>💌 Menfess Angel</h1>
-<p class="sub">Kirim menfess anonim ke @menfessangel. Menunggu approval admin.</p>
-<label>Username X / Telegram (opsional)</label>
-<input id="username" placeholder="@username kamu">
-<label style="margin-top:14px">Isi Menfess</label>
-<textarea id="text" placeholder="Tulis menfess kamu di sini..."></textarea>
-<div class="row"><input type="checkbox" id="toX" checked><label style="margin:0">Post juga ke X @jogcorp</label></div>
-<button id="btn" onclick="kirim()">Kirim Menfess 🚀</button>
-<div id="msg"></div>
-<div class="links"><a href="https://t.me/menfessangel" target="_blank">📢 Channel</a><a href="https://t.me/menfessangel_bot" target="_blank">🤖 Bot Telegram</a></div>
+  <h1>💌 Menfess Angel</h1>
+  <p class="sub">Kirim menfess anonim, 100% rahasia<br>#jogjalend</p>
+
+  <label>Username X / IG kamu (opsional)</label>
+  <input id="username" placeholder="@username kamu - boleh kosong">
+
+  <label>Isi Menfess *</label>
+  <textarea id="content" placeholder="Tulis menfess kamu di sini... curhat, crush, confession, apa aja!"></textarea>
+
+  <div class="row">
+    <label class="check active" id="boxX">
+      <input type="checkbox" id="toX" checked> Post ke X juga
+    </label>
+    <label class="check" id="boxAnon">
+      <input type="checkbox" id="anon" checked> Anonim
+    </label>
+  </div>
+
+  <button id="kirim" onclick="kirim()">✨ Kirim Menfess</button>
+  <div id="msg"></div>
+
+  <div class="footer">
+    Lihat menfess di <a href="https://t.me/menfessangel" target="_blank">@menfessangel</a><br>
+    & <a href="https://x.com/jogcorp" target="_blank">@jogcorp</a>
+  </div>
 </div>
+
 <script>
-async function kirim(){
-  const btn=document.getElementById('btn'), msg=document.getElementById('msg');
-  const text=document.getElementById('text').value.trim();
-  const username=document.getElementById('username').value.trim();
-  const toX=document.getElementById('toX').checked;
-  if(text.length<3){msg.style.color='#f87171';msg.textContent='Menfess minimal 3 huruf';return;}
-  btn.disabled=true;btn.textContent='Mengirim...';msg.textContent='';
-  try{
-    const r=await fetch('/api/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,username,toX})});
-    const j=await r.json();
-    if(j.ok){msg.style.color='#4ade80';msg.textContent='✅ Terkirim! Menunggu approval admin';document.getElementById('text').value='';}
-    else{msg.style.color='#f87171';msg.textContent='❌ '+(j.error||'Gagal kirim');}
-  }catch(e){msg.style.color='#f87171';msg.textContent='❌ Gagal konek ke server, coba lagi';}
-  btn.disabled=false;btn.textContent='Kirim Menfess 🚀';
-}
+  // === FIX MINI APP TELEGRAM ===
+  if (window.Telegram && Telegram.WebApp) {
+    try {
+      Telegram.WebApp.ready();
+      Telegram.WebApp.expand();
+      Telegram.WebApp.setHeaderColor('#7c3aed');
+      Telegram.WebApp.setBackgroundColor('#7c3aed');
+      // Biar gak bisa di-swipe tutup pas ngetik
+      Telegram.WebApp.disableVerticalSwipes();
+    } catch(e){}
+  }
+
+  // Toggle visual checkbox
+  document.getElementById('toX').addEventListener('change', e => {
+    document.getElementById('boxX').classList.toggle('active', e.target.checked);
+  });
+  document.getElementById('anon').addEventListener('change', e => {
+    document.getElementById('boxAnon').classList.toggle('active', e.target.checked);
+  });
+
+  async function kirim(){
+    const username = document.getElementById('username').value.trim();
+    const content = document.getElementById('content').value.trim();
+    const toX = document.getElementById('toX').checked;
+    const anon = document.getElementById('anon').checked;
+    const btn = document.getElementById('kirim');
+    const msg = document.getElementById('msg');
+
+    if(!content){
+      msg.style.display='block'; msg.style.color='red';
+      msg.innerText='Isi menfess-nya dulu dong 🥺';
+      return;
+    }
+
+    btn.disabled = true; btn.innerText = 'Mengirim...';
+    msg.style.display='block'; msg.style.color='#6b7280';
+    msg.innerText='Mengirim...';
+
+    try{
+      const res = await fetch('/submit_web', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ username, content, toX, anon })
+      });
+      const data = await res.json();
+      if(data.ok){
+        msg.style.color='green';
+        msg.innerText='✅ Terkirim! Menunggu approval admin 💌';
+        document.getElementById('content').value='';
+        if(window.Telegram && Telegram.WebApp){
+          Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+        }
+      } else {
+        msg.style.color='red';
+        msg.innerText='❌ Gagal: '+(data.error||'coba lagi');
+      }
+    }catch(e){
+      msg.style.color='red';
+      msg.innerText='❌ Gagal konek ke server, coba lagi';
+    }
+    btn.disabled=false; btn.innerText='✨ Kirim Menfess';
+  }
 </script>
 </body>
 </html>
