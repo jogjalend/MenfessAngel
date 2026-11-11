@@ -1,5 +1,6 @@
-# api/submit_web.py - KHUSUS tombol Kirim di Web
-# api/index.py JANGAN DIUBAH, ini file terpisah
+# api/submit_web.py - FULL FIX
+# Kirim ke ADMIN dulu, TIDAK langsung ke channel
+# api/index.py JANGAN DIUBAH
 
 import os
 import json
@@ -8,7 +9,7 @@ import requests
 from http.server import BaseHTTPRequestHandler
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL_ID = os.environ.get("CHANNEL_ID")  # contoh: -1001234567890
+ADMIN_ID = os.environ.get("ADMIN_ID")
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -25,11 +26,11 @@ class handler(BaseHTTPRequestHandler):
                 self._send(400, {"ok": False, "error": "Foto & deskripsi wajib diisi"})
                 return
 
-            if not BOT_TOKEN or not CHANNEL_ID:
-                self._send(500, {"ok": False, "error": "BOT_TOKEN / CHANNEL_ID belum di-set di Vercel"})
+            if not BOT_TOKEN or not ADMIN_ID:
+                self._send(500, {"ok": False, "error": "BOT_TOKEN / ADMIN_ID belum di-set di Vercel"})
                 return
 
-            caption = f"💌 PROMOTE BARU\n\n{content}\n\n👤 Dari: @{username}\n#jogjalend"
+            caption = f"💌 PROMOTE BARU - BUTUH APPROVE\n\n{content}\n\n👤 Dari: @{username}\n\n👉 Kalau oke, forward ke @menfessangel\n#jogjalend"
 
             if "," in photo:
                 photo = photo.split(",", 1)[1]
@@ -37,13 +38,13 @@ class handler(BaseHTTPRequestHandler):
 
             url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
             files = {"photo": ("promote.jpg", img_bytes, "image/jpeg")}
-            payload = {"chat_id": CHANNEL_ID, "caption": caption}
+            payload = {"chat_id": ADMIN_ID, "caption": caption}
 
             r = requests.post(url, data=payload, files=files, timeout=30)
             tg = r.json()
 
             if not tg.get("ok"):
-                self._send(500, {"ok": False, "error": tg.get("description", "Gagal kirim ke channel")})
+                self._send(500, {"ok": False, "error": tg.get("description", "Gagal kirim ke admin")})
                 return
 
             self._send(200, {"ok": True})
