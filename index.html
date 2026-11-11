@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MenfessAngel - Kirim Menfess</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,sans-serif}
+  body{background:#0f0f12;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{max-width:480px;width:100%;background:#1a1a20;border:1px solid #2a2a33;border-radius:24px;padding:28px;text-align:center}
+  .badge{display:inline-block;background:#e879f9;color:#000;font-weight:700;font-size:12px;padding:6px 12px;border-radius:99px;margin-bottom:16px}
+  h1{font-size:28px;margin-bottom:8px}
+  p.desc{color:#a1a1aa;font-size:14px;line-height:1.6;margin-bottom:18px}
+  textarea{width:100%;min-height:120px;background:#25252e;border:1px solid #333;color:#fff;border-radius:14px;padding:14px;font-size:14px;resize:vertical;outline:none}
+  textarea:focus{border-color:#e879f9}
+  input[type="text"]{width:100%;background:#25252e;border:1px solid #333;color:#fff;border-radius:14px;padding:12px 14px;font-size:14px;margin-top:10px;outline:none}
+  .row{display:flex;gap:10px;margin-top:12px;text-align:left}
+  .check{flex:1;background:#25252e;border-radius:12px;padding:12px;font-size:13px;cursor:pointer}
+  .check input{margin-right:6px}
+  .check small{display:block;color:#a1a1aa;font-size:11px;margin-top:2px}
+  .btn{width:100%;background:#2AABEE;color:#fff;border:none;font-weight:700;padding:15px;border-radius:14px;margin-top:14px;font-size:16px;cursor:pointer}
+  .btn:disabled{opacity:.6}
+  .btn2{display:block;background:#1a1a20;border:1px solid #2a2a33;color:#fff;text-decoration:none;font-weight:600;padding:13px;border-radius:14px;margin-top:10px;font-size:14px}
+  #status{margin-top:12px;font-size:13px;color:#e879f9;min-height:18px}
+  .footer{margin-top:16px;color:#71717a;font-size:11px}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">● BOT AKTIF ✅</div>
+    <h1>👼 MenfessAngel</h1>
+    <p class="desc">Kirim menfess anonim ke <b>@menfessangel</b><br>Bisa langsung dari web, tanpa buka Telegram.</p>
+
+    <textarea id="text" placeholder="Tulis menfess kamu di sini... (min 3 huruf)&#10;&#10;Contoh: mau cerita, hari ini capek banget..."></textarea>
+    <input type="text" id="tg" placeholder="@username Telegram kamu (opsional, buat cek Premium X)">
+
+    <div class="row">
+      <label class="check"><input type="checkbox" id="toX"> Post juga ke 𝕏 X<small>Butuh X Premium Rp100.000 / 30 hari. Kalau belum premium, cuma naik ke Channel.</small></label>
+    </div>
+
+    <button class="btn" id="sendBtn" onclick="kirim()">Kirim Menfess →</button>
+    <div id="status"></div>
+
+    <a class="btn2" href="https://t.me/menfessangel_bot" target="_blank">Atau kirim via Bot Telegram</a>
+    <a class="btn2" href="https://t.me/menfessangel" target="_blank">Lihat Channel @menfessangel</a>
+    <div class="footer">© 2026 MenfessAngel • V117.7 • Web Form Beta</div>
+  </div>
+
+<script>
+async function kirim(){
+  const text = document.getElementById('text').value.trim();
+  const tg = document.getElementById('tg').value.trim();
+  const toX = document.getElementById('toX').checked;
+  const st = document.getElementById('status');
+  const btn = document.getElementById('sendBtn');
+  if(text.length < 3){ st.textContent = '❌ Menfess minimal 3 huruf ya'; return; }
+  btn.disabled = true; btn.textContent = 'Mengirim...'; st.textContent = 'Mengirim ke admin untuk dicek...';
+  try{
+    const r = await fetch('/api/submit', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text, username: tg, toX})
+    });
+    const j = await r.json();
+    if(j.ok){
+      st.textContent = '✅ Terkirim! Menunggu approval admin, lalu naik ke Channel' + (toX ? ' + X' : '');
+      document.getElementById('text').value = '';
+    } else {
+      st.textContent = '❌ ' + (j.error || 'Gagal kirim');
+    }
+  } catch(e){
+    st.textContent = '❌ Gagal konek ke server, coba lagi / kirim via Telegram';
+  }
+  btn.disabled = false; btn.textContent = 'Kirim Menfess →';
+}
+</script>
+</body>
+</html>
