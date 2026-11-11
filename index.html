@@ -6,31 +6,60 @@
 <title>Menfess Angel 💌</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  *{box-sizing:border-box}
-  body{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;background:linear-gradient(180deg,#8b5cf6,#6d28d9);min-height:100vh;display:flex;justify-content:center;padding:16px;color:#1f2937}
-  .card{background:#fff;width:100%;max-width:420px;height:fit-content;border-radius:24px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
-  h1{text-align:center;margin:0 0 4px;font-size:24px;font-family:inherit}
-  p.sub{text-align:center;margin:0 0 18px;color:#6b7280;font-size:13px;line-height:1.5}
-  label{font-weight:700;font-size:13px;display:block;margin:14px 0 6px;font-family:inherit}
-  input,textarea{width:100%;padding:12px 14px;border:2px solid #e5e7eb;border-radius:14px;font-size:15px;outline:none;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;background:#f9fafb}
-  input:focus,textarea:focus{border-color:#8b5cf6;background:#fff}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+    background:#000;min-height:100vh;display:flex;justify-content:center;padding:16px;color:#fff;
+  }
+  body::before{
+    content:'';position:fixed;inset:-20px;z-index:0;
+    background:url('bg.jpg') center center / cover no-repeat;
+    filter:blur(8px) brightness(.55);transform:scale(1.05);
+  }
+  body::after{
+    content:'';position:fixed;inset:0;z-index:0;
+    background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,.55));
+  }
+  .card{
+    position:relative;z-index:1;background:rgba(12,12,12,.92);
+    width:100%;max-width:420px;height:fit-content;border-radius:24px;padding:22px;
+    border:1px solid rgba(255,255,255,.35);box-shadow:0 10px 40px rgba(0,0,0,.6)
+  }
+  h1{text-align:center;font-size:22px;margin-bottom:4px}
+  p.sub{text-align:center;color:#d1d5db;font-size:12px;line-height:1.6;margin-bottom:6px}
+  label{display:block;font-weight:700;font-size:13px;margin:16px 0 6px}
+  input,textarea{
+    width:100%;padding:12px 14px;border:1px solid rgba(255,255,255,.4);border-radius:14px;
+    font-size:14px;font-family:inherit;background:rgba(0,0,0,.6);color:#fff;outline:none
+  }
+  input::placeholder,textarea::placeholder{color:#9ca3af}
+  input:focus,textarea:focus{border-color:#fff;background:#000}
   textarea{min-height:110px;resize:vertical}
-  .upload{border:2px dashed #d8b4fe;background:#faf5ff;border-radius:14px;padding:14px;text-align:center;cursor:pointer;color:#6d28d9;font-weight:700;font-size:14px;display:block;font-family:inherit}
+  .upload{
+    border:2px dashed rgba(255,255,255,.6);background:rgba(255,255,255,.05);border-radius:14px;
+    padding:14px;text-align:center;cursor:pointer;font-weight:700;font-size:13px;display:block
+  }
   #foto{display:none}
   #preview{width:100%;border-radius:14px;margin-top:10px;display:none;max-height:300px;object-fit:cover}
   #hapusFoto{display:none;margin-top:8px;width:100%;padding:8px;border:0;border-radius:10px;background:#fee2e2;color:#dc2626;font-weight:700;cursor:pointer;font-family:inherit}
   .row{display:flex;gap:10px;margin-top:14px}
-  .check{flex:1;display:flex;align-items:center;gap:8px;border:2px solid #e5e7eb;border-radius:14px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
-  .check.active{border-color:#8b5cf6;background:#f5f3ff}
-  .check input{width:18px;height:18px;accent-color:#8b5cf6}
-  .admin{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border:2px solid #e5e7eb;border-radius:14px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;color:#1f2937;background:#fff;font-family:inherit}
-  button#kirim{width:100%;margin-top:16px;padding:14px;border:0;border-radius:14px;background:#7c3aed;color:#fff;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit}
+  .row a{
+    flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+    border:1px solid rgba(255,255,255,.5);border-radius:14px;padding:12px 4px;
+    font-size:13px;font-weight:700;text-decoration:none;color:#fff;background:rgba(255,255,255,.05);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+  }
+  button#kirim{
+    width:100%;margin-top:16px;padding:14px;border:0;border-radius:14px;
+    background:linear-gradient(180deg,#e5e7eb,#9ca3af);color:#000;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit
+  }
   button#kirim:disabled{opacity:.6}
-  #msg{text-align:center;margin-top:12px;font-size:14px;font-weight:600;display:none;font-family:inherit}
+  #msg{text-align:center;margin-top:12px;font-size:14px;font-weight:600;display:none;line-height:1.5}
   #seeon{display:none;margin-top:12px;gap:8px}
-  #seeon a{flex:1;text-align:center;padding:11px;border-radius:12px;text-decoration:none;font-weight:700;font-size:13px;font-family:inherit}
-  #seeon a.tg{background:#0088cc;color:#fff}
-  #seeon a.x{background:#000;color:#fff}
+  #seeon a{flex:1;text-align:center;padding:11px 4px;border-radius:12px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap}
+  #seeon a.tg{background:#fff;color:#000}
+  #seeon a.x{background:#000;color:#fff;border:1px solid #fff}
+  .hint{text-align:center;font-size:11px;color:#9ca3af;margin-top:6px}
 </style>
 </head>
 <body>
@@ -39,39 +68,41 @@
   <p class="sub">Kirim Promote Disini<br>Promote jasa & konten kamu disini.<br>#jogjalend</p>
 
   <label>Username Telegram kamu</label>
-  <input id="username" placeholder="@username Telegram kamu">
+  <input id="username" placeholder="@username" autocomplete="off">
 
   <label>Foto Promote *</label>
   <label class="upload" for="foto">📷 Pilih Foto / Poster Promote</label>
   <input type="file" id="foto" accept="image/*" onchange="previewFoto(event)">
-  <img id="preview">
-  <button id="hapusFoto" onclick="hapusFoto()">❌ Hapus Foto</button>
+  <img id="preview" alt="">
+  <button id="hapusFoto" type="button" onclick="hapusFoto()">❌ Hapus Foto</button>
+  <div class="hint">PNG, JPG maks 5MB</div>
 
   <label>Deskripsi *</label>
-  <textarea id="content" placeholder="Tulis deskripsi promote kamu di sini... Jasa apa, konten apa, deskripsi, harga, link, kontak, dll."></textarea>
+  <textarea id="content" placeholder="Tulis deskripsi promote kamu di sini..."></textarea>
 
   <div class="row">
-    <label class="check active" id="boxX"><input type="checkbox" id="toX" checked> Post ke X juga</label>
-    <a class="admin" href="https://t.me/jogja_lend" target="_blank">✈️ Hubungi Admin</a>
+    <a href="https://t.me/menfessangel" target="_blank" rel="noopener">📢 Channel</a>
+    <a href="https://t.me/jogja_lend" target="_blank" rel="noopener">✈️ Hubungi Admin</a>
   </div>
 
-  <button id="kirim" onclick="kirim()">✨ Kirim Promote</button>
+  <button id="kirim" type="button" onclick="kirim()">✨ Kirim Promote</button>
   <div id="msg"></div>
 
   <div id="seeon">
-    <a class="tg" href="https://t.me/menfessangel" target="_blank">✈️ See on Telegram</a>
-    <a class="x" href="https://x.com/jogcorp" target="_blank">𝕏 See on X</a>
+    <a class="tg" href="https://t.me/menfessangel" target="_blank" rel="noopener">✈️ See on Telegram</a>
+    <a class="x" href="https://x.com/jogcorp" target="_blank" rel="noopener">𝕏 See on X</a>
   </div>
 </div>
 
 <script>
   if(window.Telegram && Telegram.WebApp){
-    try{ Telegram.WebApp.ready(); Telegram.WebApp.expand(); Telegram.WebApp.setHeaderColor('#7c3aed'); Telegram.WebApp.setBackgroundColor('#7c3aed'); Telegram.WebApp.disableVerticalSwipes(); }catch(e){}
+    try{ Telegram.WebApp.ready(); Telegram.WebApp.expand(); Telegram.WebApp.setHeaderColor('#000000'); Telegram.WebApp.setBackgroundColor('#000000'); Telegram.WebApp.disableVerticalSwipes(); }catch(e){}
   }
   let fotoBase64 = '';
   function previewFoto(e){
     const file = e.target.files[0];
     if(!file) return;
+    if(file.size > 5*1024*1024){ alert('Foto maks 5MB ya!'); e.target.value=''; return; }
     const reader = new FileReader();
     reader.onload = function(ev){
       fotoBase64 = ev.target.result;
@@ -86,29 +117,27 @@
     document.getElementById('preview').style.display='none';
     document.getElementById('hapusFoto').style.display='none';
   }
-  document.getElementById('toX').addEventListener('change', e=>{ document.getElementById('boxX').classList.toggle('active', e.target.checked); });
   async function kirim(){
     const username=document.getElementById('username').value.trim();
     const content=document.getElementById('content').value.trim();
-    const toX=document.getElementById('toX').checked;
     const btn=document.getElementById('kirim');
     const msg=document.getElementById('msg');
     const seeon=document.getElementById('seeon');
-    if(!fotoBase64){ msg.style.display='block'; msg.style.color='red'; msg.innerText='Pilih foto-nya dulu dong 📷'; return; }
-    if(!content){ msg.style.display='block'; msg.style.color='red'; msg.innerText='Isi deskripsinya dulu dong 🥺'; return; }
+    if(!fotoBase64){ msg.style.display='block'; msg.style.color='#f87171'; msg.innerText='Pilih foto-nya dulu dong 📷'; return; }
+    if(!content){ msg.style.display='block'; msg.style.color='#f87171'; msg.innerText='Isi deskripsinya dulu dong 🥺'; return; }
     btn.disabled=true; btn.innerText='Mengirim...';
-    msg.style.display='block'; msg.style.color='#6b7280'; msg.innerText='Mengirim...';
+    msg.style.display='block'; msg.style.color='#d1d5db'; msg.innerText='Mengirim...';
     seeon.style.display='none';
     try{
-      const res=await fetch('/submit_web',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,content,toX,anon:true,photo:fotoBase64})});
+      const res=await fetch('/submit_web',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,content,toX:false,anon:true,photo:fotoBase64})});
       const data=await res.json();
       if(data.ok){
-        msg.style.color='green'; msg.innerText='✅ Terkirim! Menunggu approval admin 💌\nCek nanti di sini ya:';
+        msg.style.color='#4ade80'; msg.innerText='✅ Terkirim! Menunggu approval admin 💌\nCek nanti di sini ya:';
         seeon.style.display='flex';
         document.getElementById('content').value=''; hapusFoto();
         if(window.Telegram && Telegram.WebApp) Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-      }else{ msg.style.color='red'; msg.innerText='❌ Gagal: '+(data.error||'coba lagi'); }
-    }catch(e){ msg.style.color='red'; msg.innerText='❌ Gagal konek ke server, coba lagi'; }
+      }else{ msg.style.color='#f87171'; msg.innerText='❌ Gagal: '+(data.error||'coba lagi'); }
+    }catch(e){ msg.style.color='#f87171'; msg.innerText='❌ Gagal konek ke server, coba lagi'; }
     btn.disabled=false; btn.innerText='✨ Kirim Promote';
   }
 </script>
