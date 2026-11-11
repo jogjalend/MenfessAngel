@@ -9,34 +9,26 @@
   *{box-sizing:border-box;margin:0;padding:0}
   body{
     font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
-    background:#000;min-height:100vh;display:flex;justify-content:center;padding:16px;color:#fff;
-  }
-  body::before{
-    content:'';position:fixed;inset:-20px;z-index:0;
-    background:url('bg.jpg') center center / cover no-repeat;
-    filter:blur(8px) brightness(.55);transform:scale(1.05);
-  }
-  body::after{
-    content:'';position:fixed;inset:0;z-index:0;
-    background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,.55));
+    background:#0a0a0a;
+    min-height:100vh;display:flex;justify-content:center;padding:16px;color:#fff;
   }
   .card{
-    position:relative;z-index:1;background:rgba(12,12,12,.92);
+    background:#111;
     width:100%;max-width:420px;height:fit-content;border-radius:24px;padding:22px;
-    border:1px solid rgba(255,255,255,.35);box-shadow:0 10px 40px rgba(0,0,0,.6)
+    border:1px solid rgba(255,255,255,.25);box-shadow:0 10px 40px rgba(0,0,0,.6)
   }
   h1{text-align:center;font-size:22px;margin-bottom:4px}
   p.sub{text-align:center;color:#d1d5db;font-size:12px;line-height:1.6;margin-bottom:6px}
   label{display:block;font-weight:700;font-size:13px;margin:16px 0 6px}
   input,textarea{
-    width:100%;padding:12px 14px;border:1px solid rgba(255,255,255,.4);border-radius:14px;
-    font-size:14px;font-family:inherit;background:rgba(0,0,0,.6);color:#fff;outline:none
+    width:100%;padding:12px 14px;border:1px solid rgba(255,255,255,.35);border-radius:14px;
+    font-size:14px;font-family:inherit;background:#000;color:#fff;outline:none
   }
   input::placeholder,textarea::placeholder{color:#9ca3af}
-  input:focus,textarea:focus{border-color:#fff;background:#000}
+  input:focus,textarea:focus{border-color:#fff}
   textarea{min-height:110px;resize:vertical}
   .upload{
-    border:2px dashed rgba(255,255,255,.6);background:rgba(255,255,255,.05);border-radius:14px;
+    border:2px dashed rgba(255,255,255,.5);background:rgba(255,255,255,.04);border-radius:14px;
     padding:14px;text-align:center;cursor:pointer;font-weight:700;font-size:13px;display:block
   }
   #foto{display:none}
@@ -45,8 +37,8 @@
   .row{display:flex;gap:10px;margin-top:14px}
   .row a{
     flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
-    border:1px solid rgba(255,255,255,.5);border-radius:14px;padding:12px 4px;
-    font-size:13px;font-weight:700;text-decoration:none;color:#fff;background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.4);border-radius:14px;padding:12px 4px;
+    font-size:13px;font-weight:700;text-decoration:none;color:#fff;background:rgba(255,255,255,.04);
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis
   }
   button#kirim{
@@ -96,7 +88,7 @@
 
 <script>
   if(window.Telegram && Telegram.WebApp){
-    try{ Telegram.WebApp.ready(); Telegram.WebApp.expand(); Telegram.WebApp.setHeaderColor('#000000'); Telegram.WebApp.setBackgroundColor('#000000'); Telegram.WebApp.disableVerticalSwipes(); }catch(e){}
+    try{ Telegram.WebApp.ready(); Telegram.WebApp.expand(); Telegram.WebApp.setHeaderColor('#0a0a0a'); Telegram.WebApp.setBackgroundColor('#0a0a0a'); Telegram.WebApp.disableVerticalSwipes(); }catch(e){}
   }
   let fotoBase64 = '';
   function previewFoto(e){
