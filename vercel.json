@@ -1,6 +1,12 @@
 {
-  "rewrites": [
-    { "source": "/submit_web", "destination": "/api/submit_web.py" },
-    { "source": "/(.*)", "destination": "/index.html" }
+  "version": 2,
+  "builds": [
+    { "src": "api/index.py", "use": "@vercel/python" },
+    { "src": "api/submit_web.py", "use": "@vercel/python" }
+  ],
+  "routes": [
+    { "src": "/submit_web", "dest": "/api/submit_web.py" },
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "src": "/(.*)", "dest": "/api/index.py" }
   ]
 }
