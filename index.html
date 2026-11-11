@@ -3,75 +3,54 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MenfessAngel - Kirim Menfess</title>
+<title>Menfess Angel - Kirim Menfess</title>
 <style>
-  *{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,sans-serif}
-  body{background:#0f0f12;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-  .card{max-width:480px;width:100%;background:#1a1a20;border:1px solid #2a2a33;border-radius:24px;padding:28px;text-align:center}
-  .badge{display:inline-block;background:#e879f9;color:#000;font-weight:700;font-size:12px;padding:6px 12px;border-radius:99px;margin-bottom:16px}
-  h1{font-size:28px;margin-bottom:8px}
-  p.desc{color:#a1a1aa;font-size:14px;line-height:1.6;margin-bottom:18px}
-  textarea{width:100%;min-height:120px;background:#25252e;border:1px solid #333;color:#fff;border-radius:14px;padding:14px;font-size:14px;resize:vertical;outline:none}
-  textarea:focus{border-color:#e879f9}
-  input[type="text"]{width:100%;background:#25252e;border:1px solid #333;color:#fff;border-radius:14px;padding:12px 14px;font-size:14px;margin-top:10px;outline:none}
-  .row{display:flex;gap:10px;margin-top:12px;text-align:left}
-  .check{flex:1;background:#25252e;border-radius:12px;padding:12px;font-size:13px;cursor:pointer}
-  .check input{margin-right:6px}
-  .check small{display:block;color:#a1a1aa;font-size:11px;margin-top:2px}
-  .btn{width:100%;background:#2AABEE;color:#fff;border:none;font-weight:700;padding:15px;border-radius:14px;margin-top:14px;font-size:16px;cursor:pointer}
-  .btn:disabled{opacity:.6}
-  .btn2{display:block;background:#1a1a20;border:1px solid #2a2a33;color:#fff;text-decoration:none;font-weight:600;padding:13px;border-radius:14px;margin-top:10px;font-size:14px}
-  #status{margin-top:12px;font-size:13px;color:#e879f9;min-height:18px}
-  .footer{margin-top:16px;color:#71717a;font-size:11px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0f0f12;color:#fff;min-height:100vh;display:flex;justify-content:center;padding:20px}
+.card{width:100%;max-width:520px;background:#1a1a1f;border-radius:20px;padding:24px;border:1px solid #2a2a30}
+h1{font-size:28px;background:linear-gradient(90deg,#a855f7,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sub{color:#a1a1aa;margin:8px 0 20px;font-size:14px}
+label{font-size:13px;color:#d4d4d8;display:block;margin-bottom:6px}
+input,textarea{width:100%;background:#0f0f12;border:1px solid #2a2a30;border-radius:12px;color:#fff;padding:12px;font-size:15px;outline:none}
+textarea{min-height:140px;resize:vertical}
+input:focus,textarea:focus{border-color:#a855f7}
+.row{display:flex;gap:8px;align-items:center;margin:14px 0}
+.row input{width:20px;height:20px;accent-color:#a855f7}
+button{width:100%;background:linear-gradient(90deg,#a855f7,#ec4899);border:none;color:#fff;font-weight:700;font-size:16px;padding:14px;border-radius:12px;cursor:pointer}
+button:disabled{opacity:.6}
+#msg{margin-top:12px;text-align:center;font-size:14px;min-height:20px}
+.links{display:flex;gap:10px;margin-top:16px}
+.links a{flex:1;text-align:center;padding:10px;border-radius:10px;background:#26262c;color:#fff;text-decoration:none;font-size:14px}
 </style>
 </head>
 <body>
-  <div class="card">
-    <div class="badge">● BOT AKTIF ✅</div>
-    <h1>👼 MenfessAngel</h1>
-    <p class="desc">Kirim menfess anonim ke <b>@menfessangel</b><br>Bisa langsung dari web, tanpa buka Telegram.</p>
-
-    <textarea id="text" placeholder="Tulis menfess kamu di sini... (min 3 huruf)&#10;&#10;Contoh: mau cerita, hari ini capek banget..."></textarea>
-    <input type="text" id="tg" placeholder="@username Telegram kamu (opsional, buat cek Premium X)">
-
-    <div class="row">
-      <label class="check"><input type="checkbox" id="toX"> Post juga ke 𝕏 X<small>Butuh X Premium Rp100.000 / 30 hari. Kalau belum premium, cuma naik ke Channel.</small></label>
-    </div>
-
-    <button class="btn" id="sendBtn" onclick="kirim()">Kirim Menfess →</button>
-    <div id="status"></div>
-
-    <a class="btn2" href="https://t.me/menfessangel_bot" target="_blank">Atau kirim via Bot Telegram</a>
-    <a class="btn2" href="https://t.me/menfessangel" target="_blank">Lihat Channel @menfessangel</a>
-    <div class="footer">© 2026 MenfessAngel • V117.7 • Web Form Beta</div>
-  </div>
-
+<div class="card">
+<h1>💌 Menfess Angel</h1>
+<p class="sub">Kirim menfess anonim ke @menfessangel. Menunggu approval admin.</p>
+<label>Username X / Telegram (opsional)</label>
+<input id="username" placeholder="@username kamu">
+<label style="margin-top:14px">Isi Menfess</label>
+<textarea id="text" placeholder="Tulis menfess kamu di sini..."></textarea>
+<div class="row"><input type="checkbox" id="toX" checked><label style="margin:0">Post juga ke X @jogcorp</label></div>
+<button id="btn" onclick="kirim()">Kirim Menfess 🚀</button>
+<div id="msg"></div>
+<div class="links"><a href="https://t.me/menfessangel" target="_blank">📢 Channel</a><a href="https://t.me/menfessangel_bot" target="_blank">🤖 Bot Telegram</a></div>
+</div>
 <script>
 async function kirim(){
-  const text = document.getElementById('text').value.trim();
-  const tg = document.getElementById('tg').value.trim();
-  const toX = document.getElementById('toX').checked;
-  const st = document.getElementById('status');
-  const btn = document.getElementById('sendBtn');
-  if(text.length < 3){ st.textContent = '❌ Menfess minimal 3 huruf ya'; return; }
-  btn.disabled = true; btn.textContent = 'Mengirim...'; st.textContent = 'Mengirim ke admin untuk dicek...';
+  const btn=document.getElementById('btn'), msg=document.getElementById('msg');
+  const text=document.getElementById('text').value.trim();
+  const username=document.getElementById('username').value.trim();
+  const toX=document.getElementById('toX').checked;
+  if(text.length<3){msg.style.color='#f87171';msg.textContent='Menfess minimal 3 huruf';return;}
+  btn.disabled=true;btn.textContent='Mengirim...';msg.textContent='';
   try{
-    const r = await fetch('/api/submit', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({text, username: tg, toX})
-    });
-    const j = await r.json();
-    if(j.ok){
-      st.textContent = '✅ Terkirim! Menunggu approval admin, lalu naik ke Channel' + (toX ? ' + X' : '');
-      document.getElementById('text').value = '';
-    } else {
-      st.textContent = '❌ ' + (j.error || 'Gagal kirim');
-    }
-  } catch(e){
-    st.textContent = '❌ Gagal konek ke server, coba lagi / kirim via Telegram';
-  }
-  btn.disabled = false; btn.textContent = 'Kirim Menfess →';
+    const r=await fetch('/api/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,username,toX})});
+    const j=await r.json();
+    if(j.ok){msg.style.color='#4ade80';msg.textContent='✅ Terkirim! Menunggu approval admin';document.getElementById('text').value='';}
+    else{msg.style.color='#f87171';msg.textContent='❌ '+(j.error||'Gagal kirim');}
+  }catch(e){msg.style.color='#f87171';msg.textContent='❌ Gagal konek ke server, coba lagi';}
+  btn.disabled=false;btn.textContent='Kirim Menfess 🚀';
 }
 </script>
 </body>
